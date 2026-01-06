@@ -339,18 +339,24 @@ def update_csv_with_sofascore(
     
     # Combine and deduplicate
     if not df_existing.empty:
+        # Track which matches are truly new (not in existing data)
         df_combined = pd.concat([df_existing, df_new], ignore_index=True)
         
-        # Remove duplicates based on key fields
+        # Remove duplicates based on key fields, keeping last (most recent data)
         before_count = len(df_combined)
         df_combined = df_combined.drop_duplicates(
             subset=['tourney_date', 'winner_name', 'loser_name'],
             keep='last'
         )
         after_count = len(df_combined)
-        new_matches = after_count - len(df_existing)
+        duplicates_removed = before_count - after_count
         
-        logger.info(f"Removed {before_count - after_count} duplicate matches")
+        # Calculate truly new matches: final count minus original count
+        new_matches = max(0, after_count - len(df_existing))
+        
+        if duplicates_removed > 0:
+            logger.info(f"Removed {duplicates_removed} duplicate matches")
+        logger.info(f"Net new matches: {new_matches}")
     else:
         df_combined = df_new
         new_matches = len(df_new)

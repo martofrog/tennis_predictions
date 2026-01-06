@@ -246,75 +246,67 @@ def run_startup_update():
 
 
 def run_daily_update():
-    """Run the daily update job using SofaScore."""
+    """Run the daily update job using unified update process."""
     try:
-        logger.info("="*70)
-        logger.info("Starting scheduled daily update with SofaScore...")
-        logger.info("="*70)
+        from src.scripts.unified_update import run_unified_update
         
-        from datetime import datetime
-        from src.infrastructure.sofascore_adapter import update_csv_with_sofascore
+        logger.info("Starting scheduled daily update...")
+        results = run_unified_update(force_historical=False)
         
-        current_year = datetime.now().year
-        
-        # Update ATP data
-        atp_csv = project_root / f"data/atp/atp_matches_{current_year}.csv"
-        atp_added = update_csv_with_sofascore(str(atp_csv), days_back=7, tour='atp')
-        logger.info(f"✓ Added {atp_added} new ATP matches")
-        
-        # Update WTA data
-        wta_csv = project_root / f"data/wta/wta_matches_{current_year}.csv"
-        wta_added = update_csv_with_sofascore(str(wta_csv), days_back=7, tour='wta')
-        logger.info(f"✓ Added {wta_added} new WTA matches")
-        
-        # Update ratings if we got new matches
-        if atp_added > 0 or wta_added > 0:
-            logger.info("Updating player ratings...")
-            from src.data.update_data import update_ratings_from_matches, save_ratings
-            from src.data.data_loader import load_tennis_data
+        if results['success']:
+            # Reload ratings in container if model was updated
+            if results['total_players'] > 0:
+                logger.info("Reloading ratings in container...")
+                reset_container()
+                get_container()
+                logger.info("✓ Container reloaded with updated ratings")
+        else:
+            logger.error("Daily update completed with errors")
             
-            matches_df = load_tennis_data(years=[current_year])
-            ratings = update_ratings_from_matches(matches_df)
-            save_ratings(ratings)
-            logger.info(f"✓ Updated ratings for {len(ratings)} players")
-            
-            # Reload ratings in container
-            reset_container()
-            get_container()
-        
-        logger.info("="*70)
-        logger.info("Scheduled daily update completed")
-        logger.info("="*70)
     except Exception as e:
         logger.error(f"Error in scheduled daily update: {e}", exc_info=True)
 
 
 def startup_event():
-    """Startup event - load existing ratings and initialize scheduler."""
+    """Startup event - run unified update and initialize scheduler."""
     logger.info("Starting Tennis Predictions API with SofaScore...")
     
-    # Initialize rating system and load existing ratings
+    # Run unified update on startup (downloads historical if missing + last 7 days + trains model)
     try:
-        logger.info("Loading existing player ratings...")
+        logger.info("Running startup data update...")
+        from src.scripts.unified_update import run_unified_update
+        
+        results = run_unified_update(force_historical=False)
+        
+        if results['success']:
+            logger.info(f"✓ Startup update completed - {results['total_players']} players rated")
+        else:
+            logger.warning("⚠ Startup update completed with errors")
+    except Exception as e:
+        logger.error(f"Error during startup update: {e}", exc_info=True)
+        logger.info("Continuing with existing data...")
+    
+    # Load ratings into container
+    try:
+        logger.info("Loading player ratings into container...")
         container = get_container()
         rating_system = container.rating_system()
         ratings_count = len(rating_system.get_all_ratings())
         logger.info(f"✓ Loaded {ratings_count} player ratings")
     except Exception as e:
-        logger.warning(f"⚠ Could not load existing ratings: {e}")
-        logger.info("Note: Ratings will be created when you run update_with_sofascore.py")
+        logger.warning(f"⚠ Could not load ratings: {e}")
     
-    # Schedule daily update at 6:00 AM every day (uses SofaScore)
+    # Schedule daily update at 6:00 AM every day
     scheduler.add_job(
         run_daily_update,
         trigger=CronTrigger(hour=6, minute=0),
         id="daily_update",
-        name="Daily Tennis Data Update (SofaScore)",
+        name="Daily Tennis Data Update",
         replace_existing=True
     )
     scheduler.start()
     logger.info("✓ API started - Daily update scheduled for 6:00 AM")
-    logger.info("✓ Using SofaScore for real-time match data")
+    logger.info("✓ Using unified update process (historical + SofaScore)")
 
 
 def shutdown_event():
