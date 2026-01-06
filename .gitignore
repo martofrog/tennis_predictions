@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+bin/
+lib/
+include/
+pyvenv.cfg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# API
+api.log
+api.pid
+nohup.out
+
+# Cache
+cache/
+*.cache
+
+# Environment
+.env
+env.example
+
+# Data files (too large for git)
+data/*.csv
+data/atp/*.csv
+data/wta/*.csv
+
+# Keep structure
+!data/.gitkeep
+!data/atp/.gitkeep
+!data/wta/.gitkeep
+
+# Ratings file (can be regenerated)
+data/ratings.json
