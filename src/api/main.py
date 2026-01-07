@@ -88,8 +88,50 @@ def update_match_data():
     logger.info("=" * 70)
     
     try:
-        # Step 1: Download latest match data with fallback
-        logger.info("📥 Step 1/2: Downloading latest match data...")
+        # Step 1a: Fetch latest results from SofaScore (last 7 days)
+        logger.info("📥 Step 1a/3: Fetching latest results from SofaScore...")
+        try:
+            from src.data.sofascore_client import fetch_recent_matches_from_sofascore
+            from datetime import datetime
+            
+            data_dir = project_root / "data"
+            current_year = datetime.now().year
+            
+            # Fetch last 7 days for both tours
+            for tour in ['atp', 'wta']:
+                logger.info(f"  Fetching recent {tour.upper()} matches from SofaScore...")
+                try:
+                    save_path = data_dir / tour / f"{tour}_matches_{current_year}_sofascore.csv"
+                    df = fetch_recent_matches_from_sofascore(days=7, tour=tour, save_to_file=save_path)
+                    if not df.empty:
+                        logger.info(f"  ✓ SofaScore: Retrieved {len(df)} {tour.upper()} matches")
+                        
+                        # Merge with existing year file
+                        year_file = data_dir / tour / f"{tour}_matches_{current_year}.csv"
+                        if year_file.exists():
+                            import pandas as pd
+                            existing_df = pd.read_csv(year_file)
+                            
+                            # Combine and remove duplicates based on date, winner, loser
+                            combined = pd.concat([existing_df, df], ignore_index=True)
+                            combined = combined.drop_duplicates(
+                                subset=['tourney_date', 'winner_name', 'loser_name'], 
+                                keep='last'
+                            )
+                            combined = combined.sort_values('tourney_date')
+                            combined.to_csv(year_file, index=False)
+                            logger.info(f"  ✓ Merged into {year_file.name} ({len(combined)} total matches)")
+                    else:
+                        logger.info(f"  ℹ️  No recent {tour.upper()} matches found on SofaScore")
+                except Exception as e:
+                    logger.warning(f"  ⚠️  Failed to fetch {tour.upper()} from SofaScore: {e}")
+        except ImportError:
+            logger.warning("⚠️  SofaScore client not available, skipping real-time updates")
+        except Exception as e:
+            logger.warning(f"⚠️  SofaScore update failed: {e}")
+        
+        # Step 1b: Download historical/bulk data with fallback (tennis-data.co.uk)
+        logger.info("📥 Step 1b/3: Updating bulk historical data...")
         downloader_module_path = project_root / "download_match_data.py"
         if downloader_module_path.exists():
             import importlib.util
@@ -108,21 +150,21 @@ def update_match_data():
             
             for year in years_to_update:
                 logger.info(f"  Attempting ATP {year}...")
-                atp_result = downloader.download_matches(year, tour="atp", verbose=True, use_fallback=True)
+                atp_result = downloader.download_matches(year, tour="atp", verbose=False, use_fallback=True)
                 if atp_result is not None:
                     logger.info(f"  ✓ ATP {year} updated ({len(atp_result)} matches)")
                 
                 logger.info(f"  Attempting WTA {year}...")
-                wta_result = downloader.download_matches(year, tour="wta", verbose=True, use_fallback=True)
+                wta_result = downloader.download_matches(year, tour="wta", verbose=False, use_fallback=True)
                 if wta_result is not None:
                     logger.info(f"  ✓ WTA {year} updated ({len(wta_result)} matches)")
             
-            logger.info("✓ Match data download completed")
+            logger.info("✓ Bulk data download completed")
         else:
-            logger.warning("⚠️  download_match_data.py not found, skipping data download")
+            logger.warning("⚠️  download_match_data.py not found, skipping bulk download")
         
         # Step 2: Retrain model incrementally with new data
-        logger.info("🏋️  Step 2/2: Retraining model with new data...")
+        logger.info("🏋️  Step 2/3: Retraining model with new data...")
         train_model_at_startup()
         
         logger.info("=" * 70)
