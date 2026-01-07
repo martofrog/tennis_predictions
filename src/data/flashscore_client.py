@@ -116,7 +116,17 @@ class FlashScoreClient:
             url = f"{self.BASE_URL}/tennis/wta-singles/results/"
         
         logger.info(f"  Fetching {tour.upper()} from FlashScore (browser automation)...")
+        
+        # #region agent log
+        import json; open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H1,H5","location":"flashscore_client.py:151","message":"About to call _fetch_page_with_browser","data":{"url":url,"tour":tour},"timestamp":datetime.now().timestamp()*1000})+'\n')
+        # #endregion
+        
         html = self._fetch_page_with_browser(url, wait_selector='.sportName.tennis')
+        
+        # #region agent log
+        import json; open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H1,H5","location":"flashscore_client.py:160","message":"_fetch_page_with_browser completed","data":{"html_length":len(html) if html else 0,"success":html is not None},"timestamp":datetime.now().timestamp()*1000})+'\n')
+        # #endregion
+        
         if not html:
             logger.debug(f"No data retrieved for {date_str}")
             return []
@@ -285,15 +295,28 @@ class FlashScoreClient:
         Returns:
             List of match dictionaries
         """
+        # #region agent log
+        import json; open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H1","location":"flashscore_client.py:272","message":"get_recent_matches called","data":{"days":days,"tour":tour},"timestamp":datetime.now().timestamp()*1000})+'\n')
+        # #endregion
+        
         all_matches = []
         # Use real date 2025, not system date
         base_date = datetime(2025, 1, 7)
         
         for day_offset in range(days):
             date = base_date - timedelta(days=day_offset)
+            # #region agent log
+            import json; open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H1,H5","location":"flashscore_client.py:284","message":"About to fetch matches for date","data":{"day_offset":day_offset,"date":date.strftime('%Y-%m-%d'),"tour":tour},"timestamp":datetime.now().timestamp()*1000})+'\n')
+            # #endregion
+            
             logger.info(f"Fetching {tour.upper()} matches for {date.strftime('%Y-%m-%d')}")
             
             matches = self.get_matches_by_date(date, tour)
+            
+            # #region agent log
+            import json; open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H1,H5","location":"flashscore_client.py:293","message":"Completed fetch for date","data":{"day_offset":day_offset,"date":date.strftime('%Y-%m-%d'),"matches_found":len(matches)},"timestamp":datetime.now().timestamp()*1000})+'\n')
+            # #endregion
+            
             all_matches.extend(matches)
             
             if matches:

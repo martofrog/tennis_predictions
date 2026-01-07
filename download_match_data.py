@@ -115,10 +115,24 @@ class TennisDataDownloader:
             from datetime import datetime
             current_year = datetime.now().year
             
+            # #region agent log
+            import json; open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H1,H4","location":"download_match_data.py:115","message":"Checking FlashScore fallback conditions","data":{"year":year,"current_year":current_year,"should_use_flashscore":year==current_year,"tour":tour},"timestamp":datetime.now().timestamp()*1000})+'\n')
+            # #endregion
+            
             if year == current_year:
-                if verbose:
-                    print(f"tennis-data.co.uk failed, trying FlashScore for current year {year}...")
-                return self.download_matches_from_flashscore(year, tour, verbose)
+                print(f"  → tennis-data.co.uk failed, trying FlashScore for current year {year}...")
+                
+                # #region agent log
+                import json; open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H1,H4","location":"download_match_data.py:125","message":"Calling FlashScore fallback","data":{"year":year,"tour":tour,"verbose":verbose},"timestamp":datetime.now().timestamp()*1000})+'\n')
+                # #endregion
+                
+                result = self.download_matches_from_flashscore(year, tour, verbose)
+                
+                # #region agent log
+                import json; open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H1,H4","location":"download_match_data.py:132","message":"FlashScore fallback returned","data":{"result_is_none":result is None,"result_len":len(result) if result is not None else 0},"timestamp":datetime.now().timestamp()*1000})+'\n')
+                # #endregion
+                
+                return result
         
         if verbose:
             print(f"  ⚠️  {tour.upper()} {year} could not be downloaded from any source")
@@ -305,11 +319,24 @@ class TennisDataDownloader:
         """
         print(f"  → FlashScore Fallback: Fetching {tour.upper()} {year} (browser automation)...")
         
+        # #region agent log
+        import json; from datetime import datetime; open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H4","location":"download_match_data.py:309","message":"download_matches_from_flashscore called","data":{"year":year,"tour":tour},"timestamp":datetime.now().timestamp()*1000})+'\n')
+        # #endregion
+        
         try:
             # Import FlashScore client
             import sys
             sys.path.insert(0, str(Path(__file__).parent))
+            
+            # #region agent log
+            import json; from datetime import datetime; open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H4","location":"download_match_data.py:319","message":"About to import FlashScore client","data":{},"timestamp":datetime.now().timestamp()*1000})+'\n')
+            # #endregion
+            
             from src.data.flashscore_client import fetch_recent_matches_from_flashscore
+            
+            # #region agent log
+            import json; from datetime import datetime; open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H4","location":"download_match_data.py:326","message":"FlashScore client imported","data":{},"timestamp":datetime.now().timestamp()*1000})+'\n')
+            # #endregion
             
             if tour.lower() == "atp":
                 save_dir = self.atp_dir
@@ -318,7 +345,16 @@ class TennisDataDownloader:
             
             # Fetch last 14 days to get reasonable amount of data
             save_path = save_dir / f"{tour}_matches_{year}_flashscore.csv"
+            
+            # #region agent log
+            import json; from datetime import datetime; open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H1,H5","location":"download_match_data.py:335","message":"Calling fetch_recent_matches_from_flashscore","data":{"days":14,"tour":tour},"timestamp":datetime.now().timestamp()*1000})+'\n')
+            # #endregion
+            
             df = fetch_recent_matches_from_flashscore(days=14, tour=tour, save_to_file=save_path)
+            
+            # #region agent log
+            import json; from datetime import datetime; open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H1,H5","location":"download_match_data.py:343","message":"fetch_recent_matches_from_flashscore returned","data":{"df_is_none":df is None,"df_empty":df.empty if df is not None else True},"timestamp":datetime.now().timestamp()*1000})+'\n')
+            # #endregion
             
             if df is not None and not df.empty:
                 print(f"  ✓ FlashScore: Retrieved {len(df)} matches")
