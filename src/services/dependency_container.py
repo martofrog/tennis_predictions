@@ -23,6 +23,7 @@ from src.core.constants import (
     DEFAULT_SURFACE_ADVANTAGE,
     DEFAULT_K_FACTOR
 )
+from src.core.exceptions import ConfigurationError
 
 from src.infrastructure.repositories import (
     JsonRatingRepository,
@@ -114,11 +115,27 @@ class DependencyContainer:
             if self.use_mock_odds:
                 self._odds_provider = MockOddsProvider()
             else:
-                api_key = os.getenv("ODDS_API_KEY")
-                if api_key:
-                    self._odds_provider = TheOddsApiAdapter(api_key)
+                # Try to create The Odds API provider
+                odds_api_key = os.getenv("ODDS_API_KEY")
+                if odds_api_key:
+                    try:
+                        self._odds_provider = TheOddsApiAdapter(odds_api_key)
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.info("✓ The Odds API configured")
+                    except Exception as e:
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.error(f"Failed to initialize The Odds API: {e}")
+                        raise
                 else:
-                    self._odds_provider = MockOddsProvider()
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    raise ConfigurationError(
+                        "ODDS_API_KEY not found. Set it in .env file or "
+                        "use use_mock_odds=True for testing."
+                    )
+        
         return self._odds_provider
     
     def odds_converter(self) -> IOddsConverter:

@@ -46,34 +46,12 @@ def load_match_data(
         tours_to_load = ['atp', 'wta']
     
     for tour_type in tours_to_load:
-        # Try multiple patterns: subdirectory format and root format
-        patterns = [
-            f"{tour_type}_matches_*.csv",  # Subdirectory format: atp_matches_2024.csv
-            f"tennis_matches_{tour_type}_*.csv"  # Root format: tennis_matches_atp_2024.csv
-        ]
-        
-        # Check subdirectory first
+        # Look for files in tour subdirectory with pattern: atp/atp_matches_*.csv
         tour_dir = data_path / tour_type
         if tour_dir.exists():
-            for pattern in patterns:
-                for file_path in tour_dir.glob(pattern):
-                    try:
-                        # Extract year from filename
-                        year_str = file_path.stem.split('_')[-1]
-                        year = int(year_str)
-                        
-                        if years is None or year in years:
-                            df = pd.read_csv(file_path)
-                            df['year'] = year
-                            df['tour'] = tour_type
-                            dataframes.append(df)
-                            logger.info(f"Loaded {len(df)} matches from {file_path.name}")
-                    except Exception as e:
-                        logger.warning(f"Failed to load {file_path}: {e}")
-        
-        # Check root directory
-        for pattern in patterns:
-            for file_path in data_path.glob(pattern):
+            pattern = f"{tour_type}_matches_*.csv"
+            
+            for file_path in tour_dir.glob(pattern):
                 try:
                     # Extract year from filename
                     year_str = file_path.stem.split('_')[-1]
@@ -87,6 +65,8 @@ def load_match_data(
                         logger.info(f"Loaded {len(df)} matches from {file_path.name}")
                 except Exception as e:
                     logger.warning(f"Failed to load {file_path}: {e}")
+        else:
+            logger.warning(f"Tour directory {tour_dir} does not exist")
     
     if not dataframes:
         return pd.DataFrame()

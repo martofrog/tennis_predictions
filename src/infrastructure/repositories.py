@@ -111,20 +111,8 @@ class CsvMatchDataRepository(IMatchDataRepository):
         dataframes = []
         for year in years:
             for tour_type in (['atp', 'wta'] if not tour else [tour]):
-                # Try multiple file path patterns
-                possible_paths = [
-                    self.data_dir / tour_type / f"{tour_type}_matches_{year}.csv",  # Subdirectory format
-                    self.data_dir / f"tennis_matches_{tour_type}_{year}.csv",  # Root format
-                    self.data_dir / f"{tour_type}_matches_{year}.csv"  # Alternative root format
-                ]
-                
-                filepath = None
-                for path in possible_paths:
-                    if path.exists():
-                        filepath = path
-                        break
-                
-                if filepath:
+                filepath = self._get_file_path(year, tour_type)
+                if filepath.exists():
                     try:
                         df = pd.read_csv(filepath)
                         df['season'] = year
@@ -159,12 +147,7 @@ class CsvMatchDataRepository(IMatchDataRepository):
     
     def _get_file_path(self, year: int, tour: str) -> Path:
         """Get file path for a given year and tour."""
-        # Try subdirectory first (atp/wta), then root directory
-        subdir_path = self.data_dir / tour / f"{tour}_matches_{year}.csv"
-        if subdir_path.exists():
-            return subdir_path
-        # Fallback to expected naming pattern in root
-        return self.data_dir / f"tennis_matches_{tour}_{year}.csv"
+        return self.data_dir / tour.lower() / f"{tour.lower()}_matches_{year}.csv"
     
     def get_matches_by_date(self, target_date: datetime, tour: Optional[str] = None) -> pd.DataFrame:
         """
@@ -204,21 +187,13 @@ class CsvMatchDataRepository(IMatchDataRepository):
     def _get_available_years(self) -> List[int]:
         """Get list of years with available data."""
         years = []
-        # Check root directory
-        for file in self.data_dir.glob("tennis_matches_*.csv"):
-            try:
-                parts = file.stem.split('_')
-                if len(parts) >= 4:
-                    year = int(parts[-1])
-                    years.append(year)
-            except ValueError:
-                continue
-        # Check subdirectories (atp/wta)
+        # Check both atp and wta subdirectories
         for tour_dir in ['atp', 'wta']:
             tour_path = self.data_dir / tour_dir
             if tour_path.exists():
                 for file in tour_path.glob(f"{tour_dir}_matches_*.csv"):
                     try:
+                        # Extract year from filename like "atp_matches_2024.csv"
                         parts = file.stem.split('_')
                         if len(parts) >= 3:
                             year = int(parts[-1])

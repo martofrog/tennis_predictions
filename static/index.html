@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tennis Predictions Dashboard</title>
-    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    <title>Tennis Predictions - Elo Rankings & Results</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <style>
         * {
@@ -14,113 +13,104 @@
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             padding: 20px;
-            color: #000;
-        }
-
-        @media (max-width: 480px) {
-            body {
-                padding: 10px;
-            }
         }
 
         .container {
-            max-width: 1400px;
+            max-width: 1200px;
             margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
         }
 
-        header {
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
             text-align: center;
-            color: #000;
-            margin-bottom: 40px;
-            border-bottom: 2px solid #000;
-            padding-bottom: 20px;
         }
 
-        header h1 {
-            font-size: 2rem;
-            margin-bottom: 8px;
-            font-weight: 300;
-            letter-spacing: 2px;
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            font-weight: 700;
         }
 
-        header p {
-            font-size: 0.9rem;
-            color: #666;
-            font-weight: 300;
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.9;
         }
 
-        .tour-selector {
+        .tour-selection {
             display: flex;
-            gap: 10px;
             justify-content: center;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
+            gap: 10px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
         }
 
         .tour-button {
-            padding: 10px 20px;
+            padding: 12px 30px;
+            border: 2px solid #667eea;
             background: white;
-            border: 2px solid #000;
-            border-radius: 0;
+            color: #667eea;
+            border-radius: 8px;
             cursor: pointer;
-            font-size: 0.9rem;
-            font-weight: 400;
-            transition: all 0.2s;
-            color: #000;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            min-height: 44px;
-            touch-action: manipulation;
+            font-size: 16px;
+            font-weight: 600;
+            transition: all 0.3s ease;
         }
 
         .tour-button:hover {
-            background: #000;
+            background: #667eea;
             color: white;
+            transform: translateY(-2px);
         }
 
         .tour-button.active {
-            background: #ffd700;
-            color: #000;
-            border-color: #000;
+            background: #667eea;
+            color: white;
         }
 
         .tabs {
             display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            justify-content: center;
-            flex-wrap: wrap;
+            background: #f8f9fa;
+            border-bottom: 2px solid #e0e0e0;
         }
 
         .tab-button {
-            padding: 10px 20px;
-            background: white;
-            border: 2px solid #000;
-            border-radius: 0;
+            flex: 1;
+            padding: 20px;
+            background: none;
+            border: none;
             cursor: pointer;
-            font-size: 0.9rem;
-            font-weight: 400;
-            transition: all 0.2s;
-            color: #000;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            min-height: 44px;
-            touch-action: manipulation;
+            font-size: 16px;
+            font-weight: 600;
+            color: #666;
+            transition: all 0.3s ease;
+            border-bottom: 3px solid transparent;
         }
 
         .tab-button:hover {
-            background: #000;
-            color: white;
+            background: #e9ecef;
+            color: #333;
         }
 
         .tab-button.active {
-            background: #ffd700;
-            color: #000;
-            border-color: #000;
+            color: #667eea;
+            border-bottom-color: #667eea;
+            background: white;
+        }
+
+        .content {
+            padding: 40px;
+            min-height: 500px;
         }
 
         .tab-content {
@@ -129,864 +119,461 @@
 
         .tab-content.active {
             display: block;
+            animation: fadeIn 0.3s ease;
         }
 
-        .card {
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th {
+            background: #f8f9fa;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        td {
+            padding: 15px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        .rank {
+            font-weight: 700;
+            color: #667eea;
+            font-size: 1.1em;
+        }
+
+        .rating {
+            font-weight: 600;
+            color: #764ba2;
+        }
+
+        .player-name {
+            font-weight: 500;
+            color: #333;
+        }
+
+        .match-card {
             background: white;
-            border: 2px solid #000;
-            border-radius: 0;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: all 0.3s ease;
+        }
+
+        .match-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+        }
+
+        .match-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .tournament {
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .surface {
+            background: #e9ecef;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .match-details {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .player-row {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .player-row.winner {
+            background: linear-gradient(135deg, #fff5e6 0%, #ffe6cc 100%);
+            border: 2px solid #ffa726;
+        }
+
+        .player-name {
+            font-size: 1.1em;
+            font-weight: 500;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .player-row.winner .player-name {
+            font-weight: 700;
+            color: #e65100;
+        }
+
+        .winner-badge {
+            background: #ffa726;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .score-sets {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .set-score {
+            min-width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.95em;
+            color: #333;
+        }
+
+        .player-row.winner .set-score {
+            background: #fff8f0;
+            border-color: #ffa726;
+            color: #e65100;
+            font-weight: 700;
+        }
+
+        .vs-divider {
+            font-size: 0.9em;
+            color: #999;
+            font-weight: 600;
+            padding: 0 10px;
+        }
+
+        .info-box {
+            background: linear-gradient(135deg, #ffd89b 0%, #19547b 100%);
+            color: white;
             padding: 30px;
-            margin-bottom: 20px;
-            overflow-x: auto;
+            border-radius: 12px;
+            text-align: center;
         }
 
-        @media (max-width: 480px) {
-            .card {
-                padding: 15px;
-                margin-bottom: 15px;
-            }
+        .info-box h3 {
+            font-size: 1.5em;
+            margin-bottom: 15px;
         }
 
-        .card h2 {
-            color: #000;
-            margin-bottom: 25px;
-            font-size: 1.3rem;
-            font-weight: 400;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            border-bottom: 1px solid #000;
-            padding-bottom: 10px;
+        .info-box p {
+            font-size: 1.1em;
+            line-height: 1.6;
+            opacity: 0.95;
         }
 
         .loading {
             text-align: center;
             padding: 40px;
-            color: #000;
-        }
-
-        .spinner {
-            border: 3px solid #000;
-            border-top: 3px solid #ffd700;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+            color: #666;
+            font-size: 1.1em;
         }
 
         .error {
-            background: white;
-            color: #000;
-            padding: 15px;
-            border: 2px solid #000;
-            border-radius: 0;
-            margin: 20px 0;
-        }
-
-        .rankings-section {
-            margin-bottom: 50px;
-        }
-        
-        .rankings-section:last-child {
-            margin-bottom: 0;
-        }
-        
-        .rankings-title {
-            font-size: 1.8rem;
-            font-weight: 300;
-            letter-spacing: 2px;
-            margin-bottom: 25px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #000;
-            text-transform: uppercase;
-        }
-
-        .ratings-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 15px;
-        }
-
-        .rating-card {
-            background: white;
-            color: #000;
+            background: #ffebee;
+            color: #c62828;
             padding: 20px;
-            border: 2px solid #000;
-            border-radius: 0;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+
+        .empty-state {
             text-align: center;
-            transition: all 0.2s;
+            padding: 60px 20px;
+            color: #666;
         }
 
-        .rating-card:hover {
-            background: #ffd700;
-        }
-
-        .rating-card .player-name {
-            font-size: 1.2rem;
-            font-weight: 600;
-            margin-bottom: 10px;
-        }
-
-        .rating-card .rating-value {
-            font-size: 2rem;
-            font-weight: bold;
-        }
-
-        .rating-card .rank {
-            font-size: 0.9rem;
-            opacity: 0.9;
-            margin-top: 8px;
-        }
-
-        .value-bets-list {
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-
-        .value-bet-card {
-            background: white;
-            color: #000;
-            padding: 20px;
-            border: 2px solid #000;
-            border-radius: 0;
-            display: grid;
-            grid-template-columns: 1fr auto;
-            gap: 20px;
-            align-items: center;
-            transition: all 0.2s;
-        }
-
-        .value-bet-card:hover {
-            background: #ffd700;
-        }
-
-        .value-bet-card.high-ev {
-            border-color: #000;
-            border-width: 3px;
-        }
-
-        .bet-info {
-            flex: 1;
-        }
-
-        .bet-match {
-            font-size: 1.3rem;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-
-        .bet-details {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 15px;
-            font-size: 0.95rem;
-            opacity: 0.95;
-        }
-
-        .bet-metrics {
-            text-align: right;
-        }
-
-        .metric {
-            margin-bottom: 8px;
-        }
-
-        .metric-label {
-            font-size: 0.85rem;
-            opacity: 0.9;
-        }
-
-        .metric-value {
-            font-size: 1.3rem;
-            font-weight: bold;
-        }
-
-        .badge {
-            display: inline-block;
-            padding: 4px 10px;
-            border: 1px solid #000;
-            border-radius: 0;
-            font-size: 0.75rem;
-            font-weight: 400;
-            margin-left: 8px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .badge-atp {
-            background: #0066cc;
-            color: white;
-        }
-
-        .badge-wta {
-            background: #ff0066;
-            color: white;
-        }
-
-        .badge-surface {
-            background: #ffd700;
-            color: #000;
-        }
-
-        .no-data {
-            text-align: center;
-            padding: 40px;
-            color: #000;
-            font-size: 1rem;
-            border: 1px solid #000;
-        }
-
-        .refresh-button {
-            background: white;
-            color: #000;
-            border: 2px solid #000;
-            padding: 10px 20px;
-            border-radius: 0;
-            cursor: pointer;
-            font-size: 0.9rem;
-            font-weight: 400;
+        .empty-state svg {
+            width: 80px;
+            height: 80px;
+            opacity: 0.3;
             margin-bottom: 20px;
-            transition: all 0.2s;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            min-height: 44px;
-            touch-action: manipulation;
-            width: 100%;
-        }
-
-        @media (min-width: 481px) {
-            .refresh-button {
-                width: auto;
-            }
-        }
-
-        .refresh-button:hover {
-            background: #ffd700;
-        }
-
-        .stats-bar {
-            display: flex;
-            justify-content: space-around;
-            background: #ffd700;
-            padding: 20px;
-            border: 2px solid #000;
-            border-radius: 0;
-            margin-bottom: 20px;
-            color: #000;
-            flex-wrap: wrap;
-            gap: 15px;
-        }
-
-        @media (max-width: 480px) {
-            .stats-bar {
-                padding: 15px 10px;
-                gap: 10px;
-            }
-        }
-
-        .stat-item {
-            text-align: center;
-        }
-
-        .stat-value {
-            font-size: 1.5rem;
-            font-weight: bold;
-        }
-
-        .stat-label {
-            font-size: 0.9rem;
-            opacity: 0.9;
-        }
-
-        .results-table {
-            width: 100%;
-            border-collapse: collapse;
-            border: 2px solid #000;
-            display: table;
-        }
-
-        .results-table-wrapper {
-            overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
-            margin: 0;
-            padding: 0;
-            width: 100%;
         }
 
         @media (max-width: 768px) {
-            .results-table-wrapper {
-                margin: 0 -15px;
-                padding: 0 15px;
-                width: calc(100% + 30px);
-            }
-        }
-
-        .results-table thead {
-            background: #ffd700;
-        }
-
-        .results-table th {
-            padding: 15px 10px;
-            text-align: left;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            font-size: 0.85rem;
-            border-bottom: 2px solid #000;
-            border-right: 1px solid #000;
-            white-space: nowrap;
-            vertical-align: middle;
-        }
-
-        .results-table th:last-child {
-            border-right: none;
-        }
-
-        .results-table td {
-            padding: 15px 10px;
-            border-bottom: 1px solid #000;
-            border-right: 1px solid #000;
-            vertical-align: middle;
-            height: auto;
-        }
-
-        .results-table td:last-child {
-            border-right: none;
-        }
-
-        .results-table tbody tr {
-            transition: background 0.2s;
-            height: auto;
-        }
-
-        .results-table tbody tr:hover {
-            background: #ffd700;
-        }
-
-        .player-name-cell {
-            font-weight: 600;
-            font-size: 1.1rem;
-        }
-
-        .player-name-cell.winner {
-            color: #000;
-            font-weight: bold;
-        }
-
-        .player-name-cell.loser {
-            opacity: 0.6;
-        }
-
-        .score-cell {
-            font-size: 1rem;
-            text-align: center;
-            min-width: 100px;
-            vertical-align: middle;
-            font-family: 'Courier New', monospace;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-        }
-        
-        .score-cell.winner {
-            font-weight: bold;
-        }
-
-        .vs-cell {
-            text-align: center;
-            font-weight: 300;
-            opacity: 0.5;
-            font-size: 1rem;
-            width: 50px;
-            vertical-align: middle;
-        }
-
-        @media (max-width: 768px) {
-            header {
-                margin-bottom: 20px;
-                padding-bottom: 15px;
+            .header h1 {
+                font-size: 2em;
             }
 
-            header h1 {
-                font-size: 1.5rem;
-                letter-spacing: 1px;
-            }
-
-            header p {
-                font-size: 0.85rem;
-            }
-
-            .tabs {
-                gap: 5px;
-                margin-bottom: 15px;
-            }
-
-            .tab-button {
-                padding: 8px 12px;
-                font-size: 0.75rem;
-                flex: 1;
-                min-width: 0;
-            }
-
-            .card h2 {
-                font-size: 1.1rem;
-                margin-bottom: 15px;
-            }
-
-            .ratings-grid {
-                grid-template-columns: 1fr;
-                gap: 10px;
-            }
-
-            .rating-card {
-                padding: 15px;
-            }
-
-            .rating-card .player-name {
-                font-size: 1rem;
-            }
-
-            .rating-card .rating-value {
-                font-size: 1.5rem;
-            }
-
-            .value-bet-card {
-                grid-template-columns: 1fr;
-                padding: 15px;
-                gap: 15px;
-            }
-
-            .bet-match {
-                font-size: 1.1rem;
-            }
-
-            .bet-details {
+            .tour-selection {
                 flex-direction: column;
-                gap: 8px;
-                font-size: 0.85rem;
             }
 
-            .bet-metrics {
-                text-align: left;
-            }
-
-            .metric-value {
-                font-size: 1.1rem;
-            }
-
-            .stat-value {
-                font-size: 1.2rem;
-            }
-
-            .stat-label {
-                font-size: 0.8rem;
-            }
-
-            .results-table-wrapper {
-                margin: 0 -15px;
-                padding: 0 15px;
-            }
-
-            .results-table {
-                font-size: 0.85rem;
-                min-width: 100%;
+            .tour-button {
                 width: 100%;
             }
 
-            .results-table th {
-                padding: 10px 4px;
-                font-size: 0.7rem;
-                white-space: nowrap;
+            .match-details {
+                flex-direction: column;
+                gap: 10px;
             }
 
-            .results-table td {
-                padding: 10px 4px;
+            .vs-divider {
+                display: none;
+            }
+
+            .player-row {
+                width: 100%;
+            }
+
+            .content {
+                padding: 20px;
+            }
+
+            .set-score {
+                min-width: 28px;
+                height: 28px;
+                font-size: 0.85em;
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>🎾 Tennis Predictions Dashboard</h1>
-            <p>Men's & Women's Player Ratings & Daily Value Bets</p>
-        </header>
+        <div class="header">
+            <h1>🎾 Tennis Predictions</h1>
+            <p>Elo-based Rankings & Match Results</p>
+        </div>
 
-        <div class="tour-selector">
-            <button class="tour-button active" onclick="selectTour('atp')" id="tour-atp">Men's</button>
-            <button class="tour-button" onclick="selectTour('wta')" id="tour-wta">Women's</button>
+        <div class="tour-selection">
+            <button class="tour-button active" onclick="selectTour('men')">Men's</button>
+            <button class="tour-button" onclick="selectTour('women')">Women's</button>
         </div>
 
         <div class="tabs">
-            <button class="tab-button active" onclick="showTab('results')">Yesterday's Results</button>
-            <button class="tab-button" onclick="showTab('ratings')">Player Rankings</button>
-            <button class="tab-button" onclick="showTab('bets')">Value Bets</button>
+            <button class="tab-button active" onclick="showTab('ratings')">PLAYER RANKINGS</button>
+            <button class="tab-button" onclick="showTab('results')">YESTERDAY'S RESULTS</button>
+            <button class="tab-button" onclick="showTab('value-bets')">VALUE BETS</button>
         </div>
 
-        <div id="results-tab" class="tab-content active">
-            <div class="card">
-                <h2>Yesterday's Match Results</h2>
-                <button class="refresh-button" onclick="loadYesterdayResults()">🔄 Refresh</button>
-                <div id="results-content">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <p>Loading yesterday's results...</p>
-                    </div>
-                </div>
+        <div class="content">
+            <div id="ratings" class="tab-content active">
+                <div class="loading">Loading rankings...</div>
             </div>
-        </div>
 
-        <div id="ratings-tab" class="tab-content">
-            <div class="card">
-                <h2>Current Player Rankings</h2>
-                <button class="refresh-button" onclick="loadRatings()">🔄 Refresh</button>
-                <div id="ratings-content">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <p>Loading rankings...</p>
-                    </div>
-                </div>
+            <div id="results" class="tab-content">
+                <div class="loading">Loading results...</div>
             </div>
-        </div>
 
-        <div id="bets-tab" class="tab-content">
-            <div class="card">
-                <h2>Value Bets (Next 24h)</h2>
-                <button class="refresh-button" onclick="loadValueBets()">🔄 Refresh</button>
-                <div id="bets-content">
-                    <div class="loading">
-                        <div class="spinner"></div>
-                        <p>Loading value bets...</p>
-                    </div>
+            <div id="value-bets" class="tab-content">
+                <div class="info-box">
+                    <h3>⏳ Value Bets Coming Soon</h3>
+                    <p>Tennis odds are not currently available on The Odds API.</p>
+                    <p style="margin-top: 15px;">Value betting functionality will automatically activate when tennis odds become available. No updates needed!</p>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        const API_BASE = window.location.origin;
-        let currentTour = 'atp';
+        let currentTour = 'men';
+        let currentTab = 'ratings';
 
         function selectTour(tour) {
             currentTour = tour;
+            
+            // Update button states
             document.querySelectorAll('.tour-button').forEach(btn => {
                 btn.classList.remove('active');
             });
-            document.getElementById(`tour-${tour}`).classList.add('active');
+            event.target.classList.add('active');
             
-            // Reload current tab data
-            const activeTab = document.querySelector('.tab-content.active');
-            if (activeTab) {
-                const tabId = activeTab.id.replace('-tab', '');
-                if (tabId === 'ratings') {
-                    loadRatings();
-                } else if (tabId === 'bets') {
-                    loadValueBets();
-                } else if (tabId === 'results') {
-                    loadYesterdayResults();
-                }
+            // Reload current tab with new tour
+            if (currentTab === 'ratings') {
+                loadRatings();
+            } else if (currentTab === 'results') {
+                loadYesterdayResults();
             }
         }
 
         function showTab(tabName) {
-            // Hide all tabs
-            document.querySelectorAll('.tab-content').forEach(tab => {
-                tab.classList.remove('active');
-            });
+            currentTab = tabName;
+            
+            // Update tab buttons
             document.querySelectorAll('.tab-button').forEach(btn => {
                 btn.classList.remove('active');
             });
-
-            // Show selected tab
-            document.getElementById(`${tabName}-tab`).classList.add('active');
             event.target.classList.add('active');
-
-            // Load data for the tab
+            
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            document.getElementById(tabName).classList.add('active');
+            
+            // Load data for the selected tab
             if (tabName === 'ratings') {
                 loadRatings();
-            } else if (tabName === 'bets') {
-                loadValueBets();
             } else if (tabName === 'results') {
                 loadYesterdayResults();
             }
         }
 
         async function loadRatings() {
-            const content = document.getElementById('ratings-content');
-            content.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading rankings...</p></div>';
-
+            const container = document.getElementById('ratings');
+            container.innerHTML = '<div class="loading">Loading rankings...</div>';
+            
             try {
-                // Load both Men's and Women's rankings separately
-                const [mensResponse, womensResponse] = await Promise.all([
-                    fetch(`${API_BASE}/api/v2/ratings?sort_by=rating&tour=atp`),
-                    fetch(`${API_BASE}/api/v2/ratings?sort_by=rating&tour=wta`)
-                ]);
-
-                if (!mensResponse.ok || !womensResponse.ok) {
-                    throw new Error(`HTTP error!`);
-                }
-
-                const mensRatings = await mensResponse.json();
-                const womensRatings = await womensResponse.json();
-
-                let html = '';
-
-                // Show based on selected tour
-                // If Men's selected: show only Men's
-                // If Women's selected: show only Women's
-                const showMens = currentTour === 'atp';
-                const showWomens = currentTour === 'wta';
-
-                // Men's Rankings Section
-                if (showMens) {
-                    html += `
-                        <div class="rankings-section">
-                            <h2 class="rankings-title">Men's Rankings</h2>
-                            <div class="ratings-grid">
-                    `;
-                    
-                    mensRatings.slice(0, 50).forEach((rating, index) => {
-                        html += `
-                            <div class="rating-card">
-                                <div class="rank">#${index + 1}</div>
-                                <div class="player-name">${rating.player}</div>
-                                <div class="rating-value">${rating.rating.toFixed(1)}</div>
-                            </div>
-                        `;
-                    });
-                    
-                    html += '</div></div>';
-                }
-
-                // Women's Rankings Section
-                if (showWomens) {
-                    html += `
-                        <div class="rankings-section">
-                            <h2 class="rankings-title">Women's Rankings</h2>
-                            <div class="ratings-grid">
-                    `;
-                    
-                    womensRatings.slice(0, 50).forEach((rating, index) => {
-                        html += `
-                            <div class="rating-card">
-                                <div class="rank">#${index + 1}</div>
-                                <div class="player-name">${rating.player}</div>
-                                <div class="rating-value">${rating.rating.toFixed(1)}</div>
-                            </div>
-                        `;
-                    });
-                    
-                    html += '</div></div>';
-                }
-
-                content.innerHTML = html;
-            } catch (error) {
-                content.innerHTML = `<div class="error">Error loading rankings: ${error.message}</div>`;
-            }
-        }
-
-        async function loadValueBets() {
-            const content = document.getElementById('bets-content');
-            content.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading value bets...</p></div>';
-
-            try {
-                const sport = currentTour === 'atp' ? 'tennis_atp' : 'tennis_wta';
-                const response = await fetch(`${API_BASE}/api/v2/value-bets?min_edge=5.0&sport=${sport}`);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const bets = await response.json();
-
-                if (bets.length === 0) {
-                    content.innerHTML = '<div class="no-data">No value bets found for the next 24 hours. Check back later!</div>';
+                const response = await fetch('/api/v2/ratings');
+                const ratings = await response.json();
+                
+                // Filter by tour
+                const filtered = ratings.filter(r => {
+                    if (currentTour === 'men') {
+                        return r.tour === 'atp';
+                    } else {
+                        return r.tour === 'wta';
+                    }
+                });
+                
+                if (filtered.length === 0) {
+                    container.innerHTML = '<div class="empty-state"><p>No rankings available</p></div>';
                     return;
                 }
-
-                // Calculate stats
-                const totalBets = bets.length;
-                const avgEV = bets.reduce((sum, bet) => sum + bet.expected_value_percentage, 0) / totalBets;
-                const maxEV = Math.max(...bets.map(bet => bet.expected_value_percentage));
-
+                
                 let html = `
-                    <div class="stats-bar">
-                        <div class="stat-item">
-                            <div class="stat-value">${totalBets}</div>
-                            <div class="stat-label">Total Bets</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value">${avgEV.toFixed(1)}%</div>
-                            <div class="stat-label">Avg EV</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value">${maxEV.toFixed(1)}%</div>
-                            <div class="stat-label">Max EV</div>
-                        </div>
-                    </div>
-                    <div class="value-bets-list">
-                `;
-
-                // Sort by EV descending
-                bets.sort((a, b) => b.expected_value_percentage - a.expected_value_percentage);
-
-                bets.forEach(bet => {
-                    const isHighEV = bet.expected_value_percentage > 10;
-                    const gameTime = new Date(bet.commence_time).toLocaleTimeString('en-US', { 
-                        hour: 'numeric', 
-                        minute: '2-digit',
-                        hour12: true 
-                    });
-
-                    html += `
-                        <div class="value-bet-card ${isHighEV ? 'high-ev' : ''}">
-                            <div class="bet-info">
-                                <div class="bet-match">
-                                    ${bet.player1} vs ${bet.player2}
-                                    <span class="badge badge-${bet.tour}">${bet.tour.toUpperCase()}</span>
-                                    <span class="badge badge-surface">${bet.surface}</span>
-                                </div>
-                                <div class="bet-details">
-                                    <span><strong>Bet On:</strong> ${bet.bet_on_player}</span>
-                                    <span><strong>Bookmaker:</strong> ${bet.bookmaker}</span>
-                                    <span><strong>Odds:</strong> ${bet.odds.toFixed(2)}</span>
-                                    <span><strong>Time:</strong> ${gameTime}</span>
-                                </div>
-                            </div>
-                            <div class="bet-metrics">
-                                <div class="metric">
-                                    <div class="metric-label">Expected Value</div>
-                                    <div class="metric-value positive">${bet.expected_value_percentage.toFixed(2)}%</div>
-                                </div>
-                                <div class="metric">
-                                    <div class="metric-label">Edge</div>
-                                    <div class="metric-value positive">${bet.edge_percentage.toFixed(2)}%</div>
-                                </div>
-                                <div class="metric">
-                                    <div class="metric-label">Our Probability</div>
-                                    <div class="metric-value">${(bet.our_probability * 100).toFixed(1)}%</div>
-                                </div>
-                                <div class="metric">
-                                    <div class="metric-label">Bookmaker Probability</div>
-                                    <div class="metric-value">${(bet.bookmaker_probability * 100).toFixed(1)}%</div>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                });
-
-                html += '</div>';
-                content.innerHTML = html;
-            } catch (error) {
-                content.innerHTML = `<div class="error">Error loading value bets: ${error.message}<br><br>Make sure the API server is running: <code>python run_api.py</code></div>`;
-            }
-        }
-
-        async function loadYesterdayResults() {
-            const content = document.getElementById('results-content');
-            content.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading yesterday\'s results...</p></div>';
-
-            try {
-                const tour = currentTour;
-                const response = await fetch(`${API_BASE}/api/v2/matches/yesterday?tour=${tour}`);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const matches = await response.json();
-
-                if (matches.length === 0) {
-                    content.innerHTML = '<div class="no-data">No matches played yesterday. Check back tomorrow for today\'s results!</div>';
-                    return;
-                }
-
-                // Get yesterday's date for display
-                const yesterday = new Date();
-                yesterday.setDate(yesterday.getDate() - 1);
-                const dateStr = yesterday.toLocaleDateString('en-US', { 
-                    weekday: 'long', 
-                    year: 'numeric', 
-                    month: 'long', 
-                    day: 'numeric' 
-                });
-
-                let html = `
-                    <div class="stats-bar">
-                        <div class="stat-item">
-                            <div class="stat-value">${matches.length}</div>
-                            <div class="stat-label">Matches Played</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-value">${dateStr}</div>
-                            <div class="stat-label">Date</div>
-                        </div>
-                    </div>
-                    <div class="results-table-wrapper">
-                    <table class="results-table">
+                    <table>
                         <thead>
                             <tr>
-                                <th>Winner</th>
-                                <th colspan="3">Score</th>
-                                <th>Loser</th>
-                                <th>Surface</th>
+                                <th>Rank</th>
+                                <th>Player</th>
+                                <th>Rating</th>
                                 <th>Tour</th>
                             </tr>
                         </thead>
                         <tbody>
                 `;
-
-                matches.forEach(match => {
-                    const player1Won = match.winner === match.player1;
-                    const player2Won = match.winner === match.player2;
-                    
-                    // Format scores in standard tennis format (set-by-set)
-                    // If we have separate scores, combine them: "6 6 7" + "4 3 6" -> "6-4 6-3 7-6"
-                    let formattedScore = '—';
-                    if (match.player1_score && match.player2_score) {
-                        const p1Sets = match.player1_score.trim().split(/\s+/);
-                        const p2Sets = match.player2_score.trim().split(/\s+/);
-                        
-                        const sets = [];
-                        for (let i = 0; i < Math.max(p1Sets.length, p2Sets.length); i++) {
-                            if (p1Sets[i] && p2Sets[i]) {
-                                sets.push(`${p1Sets[i]}-${p2Sets[i]}`);
-                            }
-                        }
-                        formattedScore = sets.join(' ');
-                    }
-
+                
+                filtered.forEach((player, index) => {
                     html += `
                         <tr>
-                            <td class="player-name-cell ${player1Won ? 'winner' : 'loser'}">
-                                ${match.player1}
-                            </td>
-                            <td class="score-cell ${player1Won ? 'winner' : 'loser'}" colspan="3">
-                                ${formattedScore}
-                            </td>
-                            <td class="player-name-cell ${player2Won ? 'winner' : 'loser'}">
-                                ${match.player2}
-                            </td>
-                            <td class="score-cell">${match.surface || '—'}</td>
-                            <td class="score-cell">${match.tour ? match.tour.toUpperCase() : '—'}</td>
+                            <td class="rank">#${index + 1}</td>
+                            <td class="player-name">${player.player_name}</td>
+                            <td class="rating">${Math.round(player.rating)}</td>
+                            <td>${player.tour.toUpperCase()}</td>
                         </tr>
                     `;
                 });
-
-                html += `
-                        </tbody>
-                    </table>
-                    </div>
-                `;
-                content.innerHTML = html;
+                
+                html += '</tbody></table>';
+                container.innerHTML = html;
+                
             } catch (error) {
-                content.innerHTML = `<div class="error">Error loading yesterday's results: ${error.message}<br><br>Make sure the API server is running: <code>python run_api.py</code></div>`;
+                container.innerHTML = `<div class="error">Error loading rankings: ${error.message}</div>`;
+            }
+        }
+
+        async function loadYesterdayResults() {
+            const container = document.getElementById('results');
+            container.innerHTML = '<div class="loading">Loading yesterday\'s results...</div>';
+            
+            try {
+                const tourParam = currentTour === 'men' ? 'atp' : 'wta';
+                const response = await fetch(`/api/v2/matches/yesterday?tour=${tourParam}`);
+                const matches = await response.json();
+                
+                if (matches.length === 0) {
+                    container.innerHTML = '<div class="empty-state"><p>No matches played yesterday</p></div>';
+                    return;
+                }
+                
+                let html = '';
+                matches.forEach(match => {
+                    // Parse scores into sets
+                    const player1Sets = match.player1_score ? match.player1_score.split(' ') : [];
+                    const player2Sets = match.player2_score ? match.player2_score.split(' ') : [];
+                    
+                    // Determine winner
+                    const isPlayer1Winner = match.winner === match.player1;
+                    const isPlayer2Winner = match.winner === match.player2;
+                    
+                    // Build set scores HTML
+                    let player1SetsHtml = '';
+                    let player2SetsHtml = '';
+                    
+                    for (let i = 0; i < Math.max(player1Sets.length, player2Sets.length); i++) {
+                        player1SetsHtml += `<div class="set-score">${player1Sets[i] || '-'}</div>`;
+                        player2SetsHtml += `<div class="set-score">${player2Sets[i] || '-'}</div>`;
+                    }
+                    
+                    html += `
+                        <div class="match-card">
+                            <div class="match-header">
+                                <span class="tournament">${match.tournament || 'Tournament'}</span>
+                                <span class="surface">${match.surface || 'Unknown'}</span>
+                            </div>
+                            <div class="match-details">
+                                <div class="player-row ${isPlayer1Winner ? 'winner' : ''}">
+                                    <div class="player-name">
+                                        ${isPlayer1Winner ? '<span class="winner-badge">W</span>' : ''}
+                                        ${match.player1}
+                                    </div>
+                                    <div class="score-sets">
+                                        ${player1SetsHtml}
+                                    </div>
+                                </div>
+                                <div class="vs-divider">vs</div>
+                                <div class="player-row ${isPlayer2Winner ? 'winner' : ''}">
+                                    <div class="player-name">
+                                        ${isPlayer2Winner ? '<span class="winner-badge">W</span>' : ''}
+                                        ${match.player2}
+                                    </div>
+                                    <div class="score-sets">
+                                        ${player2SetsHtml}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                container.innerHTML = html;
+                
+            } catch (error) {
+                container.innerHTML = `<div class="error">Error loading results: ${error.message}</div>`;
             }
         }
 
         // Load initial data
-        loadYesterdayResults();
+        loadRatings();
     </script>
 </body>
 </html>

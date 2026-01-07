@@ -32,38 +32,44 @@ class TennisDataDownloader:
         self.atp_dir.mkdir(exist_ok=True)
         self.wta_dir.mkdir(exist_ok=True)
     
-    def download_file(self, url: str, filepath: Path) -> bool:
+    def download_file(self, url: str, filepath: Path, silent_404: bool = True) -> bool:
         """
         Download a file from URL and save to filepath.
         
         Args:
             url: URL to download from
             filepath: Path to save the file
+            silent_404: If True, don't print error message for 404s (they're expected)
             
         Returns:
             True if successful, False otherwise
         """
         try:
-            print(f"Downloading {url}...")
             response = requests.get(url, timeout=30)
             response.raise_for_status()
             
             with open(filepath, 'wb') as f:
                 f.write(response.content)
             
-            print(f"✓ Saved to {filepath}")
             return True
+        except requests.exceptions.HTTPError as e:
+            # 404 errors are expected for years not yet published
+            if e.response.status_code == 404 and silent_404:
+                return False
+            print(f"✗ Error downloading {url}: {e}")
+            return False
         except requests.exceptions.RequestException as e:
             print(f"✗ Error downloading {url}: {e}")
             return False
     
-    def download_matches(self, year: int, tour: str = "atp") -> Optional[pd.DataFrame]:
+    def download_matches(self, year: int, tour: str = "atp", verbose: bool = False) -> Optional[pd.DataFrame]:
         """
         Download match data for a specific year and tour.
         
         Args:
             year: Year to download (e.g., 2023)
             tour: 'atp' or 'wta'
+            verbose: If True, print detailed messages
             
         Returns:
             DataFrame with match data or None if download failed
@@ -80,17 +86,19 @@ class TennisDataDownloader:
         filepath = save_dir / filename
         
         # Download the file
-        if self.download_file(url, filepath):
+        if self.download_file(url, filepath, silent_404=not verbose):
             try:
                 df = pd.read_csv(filepath)
-                print(f"✓ Loaded {len(df)} matches from {filename}")
+                if verbose:
+                    print(f"✓ Loaded {len(df)} matches from {filename}")
                 return df
             except Exception as e:
-                print(f"✗ Error reading CSV: {e}")
+                if verbose:
+                    print(f"✗ Error reading CSV: {e}")
                 return None
         return None
     
-    def download_multiple_years(self, start_year: int, end_year: int, tour: str = "atp") -> dict:
+    def download_multiple_years(self, start_year: int, end_year: int, tour: str = "atp", verbose: bool = True) -> dict:
         """
         Download match data for multiple years.
         
@@ -98,24 +106,26 @@ class TennisDataDownloader:
             start_year: Starting year
             end_year: Ending year (inclusive)
             tour: 'atp' or 'wta'
+            verbose: If True, print detailed messages
             
         Returns:
             Dictionary mapping year to DataFrame
         """
         data = {}
         for year in range(start_year, end_year + 1):
-            df = self.download_matches(year, tour)
+            df = self.download_matches(year, tour, verbose=verbose)
             if df is not None:
                 data[year] = df
         return data
     
-    def download_recent_matches(self, years: int = 5, tour: str = "atp") -> dict:
+    def download_recent_matches(self, years: int = 5, tour: str = "atp", verbose: bool = True) -> dict:
         """
         Download match data for recent years.
         
         Args:
             years: Number of recent years to download
             tour: 'atp' or 'wta'
+            verbose: If True, print detailed messages
             
         Returns:
             Dictionary mapping year to DataFrame
@@ -123,7 +133,7 @@ class TennisDataDownloader:
         from datetime import datetime
         current_year = datetime.now().year
         start_year = current_year - years + 1
-        return self.download_multiple_years(start_year, current_year, tour)
+        return self.download_multiple_years(start_year, current_year, tour, verbose=verbose)
 
 
 def main():
