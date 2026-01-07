@@ -82,60 +82,74 @@ app.add_middleware(
 )
 
 
+def download_missing_data(missing_years: List[tuple]) -> None:
+    """
+    Download missing data for specified tours/years.
+    
+    Args:
+        missing_years: List of tuples (tour, year) to download
+    """
+    downloader_module_path = project_root / "download_match_data.py"
+    if not downloader_module_path.exists():
+        logger.error("download_match_data.py not found")
+        return
+    
+    try:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("download_match_data", downloader_module_path)
+        download_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(download_module)
+        TennisDataDownloader = download_module.TennisDataDownloader
+        
+        downloader = TennisDataDownloader(data_dir=str(project_root / "data"))
+        
+        for tour, year in missing_years:
+            logger.info(f"  Downloading {tour.upper()} {year}...")
+            result = downloader.download_matches(year, tour=tour, verbose=False, use_fallback=True)
+            if result is not None:
+                logger.info(f"  ✓ {tour.upper()} {year} downloaded ({len(result)} matches)")
+            else:
+                logger.warning(f"  ⚠️  {tour.upper()} {year} not available")
+    except Exception as e:
+        logger.error(f"Failed to download missing data: {e}")
+
+
+def download_all_historical_data(years: int = 5) -> None:
+    """
+    Download all historical data for recent years.
+    
+    Args:
+        years: Number of recent years to download (default: 5)
+    """
+    from datetime import datetime
+    current_year = datetime.now().year
+    years_to_download = list(range(current_year - years + 1, current_year + 1))
+    
+    missing_years = []
+    for tour in ['atp', 'wta']:
+        for year in years_to_download:
+            missing_years.append((tour, year))
+    
+    if missing_years:
+        logger.info(f"📥 Downloading {years} years of historical data...")
+        download_missing_data(missing_years)
+
+
 def update_match_data():
-    """Scheduled job to update match data and retrain model - runs daily at 6am."""
-    logger.info("🕐 Daily scheduled update started (6am)")
+    """Daily update: download recent data and retrain incrementally."""
+    logger.info("=" * 70)
+    logger.info("🔄 DAILY DATA UPDATE")
     logger.info("=" * 70)
     
     try:
-        # Step 1a: Fetch latest results from FlashScore (last 3 days)
-        logger.info("📥 Step 1a/3: Fetching latest results from FlashScore (browser automation)...")
-        try:
-            from src.data.flashscore_client import fetch_recent_matches_from_flashscore
-            from datetime import datetime
-            import pandas as pd
-            
-            data_dir = project_root / "data"
-            current_year = datetime.now().year
-            
-            # Fetch last 3 days for both tours (browser automation is slower)
-            for tour in ['atp', 'wta']:
-                logger.info(f"  Fetching recent {tour.upper()} matches from FlashScore...")
-                try:
-                    save_path = data_dir / tour / f"{tour}_matches_{current_year}_flashscore.csv"
-                    df = fetch_recent_matches_from_flashscore(days=3, tour=tour, save_to_file=save_path)
-                    if not df.empty:
-                        logger.info(f"  ✓ FlashScore: Retrieved {len(df)} {tour.upper()} matches")
-                        
-                        # Merge with existing year file
-                        year_file = data_dir / tour / f"{tour}_matches_{current_year}.csv"
-                        if year_file.exists():
-                            existing_df = pd.read_csv(year_file)
-                            
-                            # Combine and remove duplicates based on date, winner, loser
-                            combined = pd.concat([existing_df, df], ignore_index=True)
-                            combined = combined.drop_duplicates(
-                                subset=['tourney_date', 'winner_name', 'loser_name'], 
-                                keep='last'
-                            )
-                            combined = combined.sort_values('tourney_date')
-                            combined.to_csv(year_file, index=False)
-                            logger.info(f"  ✓ Merged into {year_file.name} ({len(combined)} total matches)")
-                        else:
-                            # No existing file, just save FlashScore data
-                            df.to_csv(year_file, index=False)
-                            logger.info(f"  ✓ Created {year_file.name} ({len(df)} matches)")
-                    else:
-                        logger.info(f"  ℹ️  No recent {tour.upper()} matches found on FlashScore")
-                except Exception as e:
-                    logger.warning(f"  ⚠️  Failed to fetch {tour.upper()} from FlashScore: {e}")
-        except ImportError:
-            logger.warning("⚠️  FlashScore client not available, skipping real-time updates")
-        except Exception as e:
-            logger.warning(f"⚠️  FlashScore update failed: {e}")
+        from datetime import datetime
+        import pandas as pd
         
-        # Step 1b: Download historical/bulk data with fallback (tennis-data.co.uk)
-        logger.info("📥 Step 1b/3: Updating bulk historical data...")
+        current_year = datetime.now().year
+        
+        # Step 1: Download recent years (current year + previous year)
+        # This ensures we get updates even if tennis-data.co.uk updates weekly
+        logger.info("📥 Step 1/2: Downloading recent data...")
         downloader_module_path = project_root / "download_match_data.py"
         if downloader_module_path.exists():
             import importlib.util
@@ -147,34 +161,42 @@ def update_match_data():
             data_dir = project_root / "data"
             downloader = TennisDataDownloader(data_dir=str(data_dir))
             
-            # Download previous year for bulk data (current year comes from FlashScore above)
-            from datetime import datetime
-            current_year = datetime.now().year
-            years_to_update = [current_year - 1]  # Only previous year
+            # Download current year and previous year (tennis-data.co.uk may have updates)
+            years_to_update = [current_year - 1, current_year]
             
             for year in years_to_update:
-                logger.info(f"  Attempting ATP {year}...")
-                atp_result = downloader.download_matches(year, tour="atp", verbose=False, use_fallback=True)
-                if atp_result is not None:
-                    logger.info(f"  ✓ ATP {year} updated ({len(atp_result)} matches)")
-                
-                logger.info(f"  Attempting WTA {year}...")
-                wta_result = downloader.download_matches(year, tour="wta", verbose=False, use_fallback=True)
-                if wta_result is not None:
-                    logger.info(f"  ✓ WTA {year} updated ({len(wta_result)} matches)")
-            
-            logger.info("✓ Bulk data download completed")
+                for tour in ['atp', 'wta']:
+                    logger.info(f"  Checking {tour.upper()} {year}...")
+                    result = downloader.download_matches(year, tour=tour, verbose=False, use_fallback=True)
+                    if result is not None:
+                        # Merge with existing file if it exists
+                        year_file = data_dir / tour / f"{tour}_matches_{year}.csv"
+                        if year_file.exists():
+                            existing_df = pd.read_csv(year_file)
+                            # Combine and remove duplicates
+                            combined = pd.concat([existing_df, result], ignore_index=True)
+                            combined = combined.drop_duplicates(
+                                subset=['tourney_date', 'winner_name', 'loser_name'],
+                                keep='last'
+                            )
+                            combined = combined.sort_values('tourney_date')
+                            combined.to_csv(year_file, index=False)
+                            logger.info(f"  ✓ {tour.upper()} {year} updated ({len(combined)} total matches)")
+                        else:
+                            result.to_csv(year_file, index=False)
+                            logger.info(f"  ✓ {tour.upper()} {year} created ({len(result)} matches)")
+                    else:
+                        logger.info(f"  ℹ️  {tour.upper()} {year} not available or no new data")
         else:
-            logger.warning("⚠️  download_match_data.py not found, skipping bulk download")
+            logger.warning("⚠️  download_match_data.py not found, skipping download")
         
-        # Step 2: Retrain model incrementally with new data
-        logger.info("🏋️  Step 2/3: Retraining model with new data...")
+        # Step 2: Retrain model incrementally
+        logger.info("🏋️  Step 2/2: Retraining model with new data...")
         train_model_at_startup()
         
         logger.info("=" * 70)
         logger.info("✅ Daily update completed successfully")
         logger.info("=" * 70)
-        
     except Exception as e:
         logger.error("=" * 70)
         logger.error(f"❌ Daily scheduled update failed: {e}")
@@ -237,146 +259,43 @@ def train_model_at_startup():
             except Exception as e:
                 logger.error(f"Failed to delete ratings file: {e}")
         
+        # Check if we have any historical data files
+        atp_dir = project_root / "data" / "atp"
+        wta_dir = project_root / "data" / "wta"
+        atp_files = list(atp_dir.glob("atp_matches_*.csv")) if atp_dir.exists() else []
+        wta_files = list(wta_dir.glob("wta_matches_*.csv")) if wta_dir.exists() else []
+        has_historical_data = len(atp_files) > 0 or len(wta_files) > 0
+        
+        # Full dump scenario: no ratings, no metadata, no historical data
+        if not ratings_exist and not metadata_exists and not has_historical_data:
+            logger.info("🆕 Full dump scenario detected - downloading all available data...")
+            download_all_historical_data(years=5)
+            # Force full training (last_update_date = None)
+            last_update_date = None
+        else:
+            # Normal flow: check for missing data and download
+            from datetime import datetime
+            current_year = datetime.now().year
+            years_to_check = list(range(current_year - 4, current_year + 1))  # Last 5 years including current
+            
+            missing_years = []
+            for tour in ['atp', 'wta']:
+                for year in years_to_check:
+                    data_file = (project_root / "data" / tour / f"{tour}_matches_{year}.csv")
+                    if not data_file.exists() or data_file.stat().st_size < 1000:  # Empty/small file
+                        missing_years.append((tour, year))
+            
+            # Download missing data using unified download function
+            if missing_years:
+                logger.info(f"📥 Downloading {len(missing_years)} missing data files...")
+                download_missing_data(missing_years)
+        
         if ratings_exist and last_update_date:
             logger.info(f"📊 Ratings found - Last updated: {last_update_date.strftime('%Y-%m-%d %H:%M')}")
             logger.info("🔄 Running INCREMENTAL update (processing new matches only)...")
         else:
             logger.info("📊 No ratings found - Running FULL training from scratch...")
             last_update_date = None
-        
-        # Check if we have current year data files
-        from datetime import datetime
-        current_year = datetime.now().year
-        
-        # #region agent log
-        import json; open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H2,H3","location":"main.py:250","message":"Current year detection start","data":{"current_year":current_year},"timestamp":datetime.now().timestamp()*1000})+'\n')
-        # #endregion
-        
-        atp_dir = project_root / "data" / "atp"
-        wta_dir = project_root / "data" / "wta"
-        atp_files = list(atp_dir.glob("atp_matches_*.csv")) if atp_dir.exists() else []
-        wta_files = list(wta_dir.glob("wta_matches_*.csv")) if wta_dir.exists() else []
-        
-        # Check if current year files exist
-        atp_current_year = atp_dir / f"atp_matches_{current_year}.csv" if atp_dir.exists() else None
-        wta_current_year = wta_dir / f"wta_matches_{current_year}.csv" if wta_dir.exists() else None
-        
-        has_current_year_data = (
-            atp_current_year and atp_current_year.exists() and 
-            wta_current_year and wta_current_year.exists()
-        )
-        
-        # #region agent log
-        open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H2,H3","location":"main.py:267","message":"File detection results","data":{"atp_files_count":len(atp_files),"wta_files_count":len(wta_files),"has_current_year_data":has_current_year_data,"atp_current_exists":atp_current_year.exists() if atp_current_year else False,"wta_current_exists":wta_current_year.exists() if wta_current_year else False},"timestamp":datetime.now().timestamp()*1000})+'\n')
-        # #endregion
-        
-        # If no data files exist OR current year data is missing, download them
-        if not atp_files and not wta_files:
-            # First time setup - download everything
-            logger.warning("⚠️  No match data files found - downloading historical data...")
-            logger.info("📥 This may take a few minutes on first run...")
-            should_download_current = True
-            should_download_historical = True
-        elif not has_current_year_data:
-            # Have historical data but missing current year
-            logger.warning(f"⚠️  Current year ({current_year}) data not found - fetching from FlashScore...")
-            should_download_current = True
-            should_download_historical = False
-        else:
-            # Have all data including current year
-            should_download_current = False
-            should_download_historical = False
-        
-        # #region agent log
-        open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H3","location":"main.py:285","message":"Download flags set","data":{"should_download_current":should_download_current,"should_download_historical":should_download_historical},"timestamp":datetime.now().timestamp()*1000})+'\n')
-        # #endregion
-        
-        if should_download_current or should_download_historical:
-            logger.warning("⚠️  No match data files found - downloading historical data...")
-            logger.info("📥 This may take a few minutes on first run...")
-            
-            try:
-                import pandas as pd
-                
-                # Step 1: Fetch current year data from FlashScore (if needed)
-                if should_download_current:
-                    # #region agent log
-                    open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H1,H4","location":"main.py:292","message":"Entering FlashScore fetch block","data":{"current_year":current_year},"timestamp":datetime.now().timestamp()*1000})+'\n')
-                    # #endregion
-                    
-                    logger.info("📥 Step 1: Fetching current year data from FlashScore...")
-                    try:
-                        # #region agent log
-                        open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H4","location":"main.py:299","message":"About to import FlashScore client","data":{},"timestamp":datetime.now().timestamp()*1000})+'\n')
-                        # #endregion
-                        
-                        from src.data.flashscore_client import fetch_recent_matches_from_flashscore
-                        
-                        # #region agent log
-                        open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H4","location":"main.py:306","message":"FlashScore client imported successfully","data":{},"timestamp":datetime.now().timestamp()*1000})+'\n')
-                        # #endregion
-                        
-                        data_dir = project_root / "data"
-                        
-                        for tour in ['atp', 'wta']:
-                            logger.info(f"  Fetching {tour.upper()} {current_year} matches from FlashScore...")
-                            try:
-                                # #region agent log
-                                open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H1,H5","location":"main.py:315","message":"About to call fetch_recent_matches_from_flashscore","data":{"tour":tour,"days":7},"timestamp":datetime.now().timestamp()*1000})+'\n')
-                                # #endregion
-                                
-                                # Fetch last 7 days to get recent matches
-                                save_path = data_dir / tour / f"{tour}_matches_{current_year}_flashscore.csv"
-                                df = fetch_recent_matches_from_flashscore(days=7, tour=tour, save_to_file=save_path)
-                                
-                                # #region agent log
-                                open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H1,H5","location":"main.py:325","message":"fetch_recent_matches_from_flashscore completed","data":{"tour":tour,"matches_retrieved":len(df) if df is not None and not df.empty else 0},"timestamp":datetime.now().timestamp()*1000})+'\n')
-                                # #endregion
-                                if not df.empty:
-                                    logger.info(f"  ✓ FlashScore: Retrieved {len(df)} {tour.upper()} matches")
-                                    
-                                    # Save as main year file
-                                    year_file = data_dir / tour / f"{tour}_matches_{current_year}.csv"
-                                    df.to_csv(year_file, index=False)
-                                    logger.info(f"  ✓ Saved to {year_file.name}")
-                                else:
-                                    logger.info(f"  ℹ️  No matches found on FlashScore")
-                            except Exception as e:
-                                logger.warning(f"  ⚠️  Failed to fetch {tour.upper()} from FlashScore: {e}")
-                    except Exception as e:
-                        logger.warning(f"⚠️  FlashScore fetch failed: {e}")
-                
-                # Step 2: Download historical data (if needed)
-                if should_download_historical:
-                    logger.info("📥 Step 2: Downloading historical data...")
-                    downloader_module_path = project_root / "download_match_data.py"
-                    if downloader_module_path.exists():
-                        import importlib.util
-                        spec = importlib.util.spec_from_file_location("download_match_data", downloader_module_path)
-                        download_module = importlib.util.module_from_spec(spec)
-                        spec.loader.exec_module(download_module)
-                        TennisDataDownloader = download_module.TennisDataDownloader
-                        
-                        downloader = TennisDataDownloader(data_dir=str(project_root / "data"))
-                        
-                        # Download last 4 years (not including current year - that comes from FlashScore)
-                        historical_years = range(current_year - 4, current_year)
-                        
-                        for year in historical_years:
-                            logger.info(f"  Downloading ATP {year}...")
-                            downloader.download_matches(year, tour="atp", verbose=False, use_fallback=True)
-                            logger.info(f"  Downloading WTA {year}...")
-                            downloader.download_matches(year, tour="wta", verbose=False, use_fallback=True)
-                        
-                        logger.info("✓ Data download completed")
-                    else:
-                        logger.error("❌ download_match_data.py not found - cannot download data")
-                        logger.error("   Please run: python download_match_data.py")
-                        return
-            except Exception as e:
-                logger.error(f"❌ Failed to download data: {e}")
-                logger.error("   Please run: python download_match_data.py")
-                return
         
         # Get container - this will load ratings from file if they exist
         # IMPORTANT: We must get the container AFTER checking/deleting the ratings file
@@ -532,10 +451,6 @@ def startup_event():
                 current_year = datetime.now().year
                 recent_years = [current_year - 1, current_year]
                 
-                # #region agent log
-                import json; open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H2,H3","location":"main.py:535","message":"Startup data check beginning","data":{"current_year":current_year,"recent_years":recent_years},"timestamp":datetime.now().timestamp()*1000})+'\n')
-                # #endregion
-                
                 logger.info(f"📥 Checking for match data (years: {recent_years})...")
                 
                 missing_data = []
@@ -543,19 +458,9 @@ def startup_event():
                     tour_dir = data_dir / tour
                     for year in recent_years:
                         data_file = tour_dir / f"{tour}_matches_{year}.csv"
-                        file_exists = data_file.exists()
-                        
-                        # #region agent log
-                        import json; open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H2,H3","location":"main.py:546","message":"Checking file existence","data":{"tour":tour,"year":year,"file_path":str(data_file),"exists":file_exists},"timestamp":datetime.now().timestamp()*1000})+'\n')
-                        # #endregion
-                        
-                        if not file_exists:
+                        if not data_file.exists():
                             missing_data.append((tour, year))
                             logger.info(f"  Missing: {tour.upper()} {year}")
-                
-                # #region agent log
-                import json; open('/Users/nmartorana/dev/playground/tennis_predictions/.cursor/debug.log', 'a').write(json.dumps({"sessionId":"debug-session","runId":"startup","hypothesisId":"H3","location":"main.py:556","message":"Missing data check result","data":{"missing_count":len(missing_data),"missing_data":[(t,y) for t,y in missing_data]},"timestamp":datetime.now().timestamp()*1000})+'\n')
-                # #endregion
                 
                 if missing_data:
                     logger.info("📥 Downloading missing match data (with tennis-data.co.uk fallback)...")
