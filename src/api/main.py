@@ -147,10 +147,10 @@ def update_match_data():
             data_dir = project_root / "data"
             downloader = TennisDataDownloader(data_dir=str(data_dir))
             
-            # Download current year + last year for both tours (with fallback)
+            # Download previous year for bulk data (current year comes from FlashScore above)
             from datetime import datetime
             current_year = datetime.now().year
-            years_to_update = [current_year - 1, current_year]
+            years_to_update = [current_year - 1]  # Only previous year
             
             for year in years_to_update:
                 logger.info(f"  Attempting ATP {year}...")
@@ -256,7 +256,39 @@ def train_model_at_startup():
             logger.info("📥 This may take a few minutes on first run...")
             
             try:
-                # Import and run the downloader
+                from datetime import datetime
+                import pandas as pd
+                
+                current_year = datetime.now().year
+                
+                # Step 1: Fetch current year data from FlashScore (real-time)
+                logger.info("📥 Step 1/2: Fetching current year data from FlashScore...")
+                try:
+                    from src.data.flashscore_client import fetch_recent_matches_from_flashscore
+                    data_dir = project_root / "data"
+                    
+                    for tour in ['atp', 'wta']:
+                        logger.info(f"  Fetching {tour.upper()} {current_year} matches from FlashScore...")
+                        try:
+                            # Fetch last 7 days to get recent matches
+                            save_path = data_dir / tour / f"{tour}_matches_{current_year}_flashscore.csv"
+                            df = fetch_recent_matches_from_flashscore(days=7, tour=tour, save_to_file=save_path)
+                            if not df.empty:
+                                logger.info(f"  ✓ FlashScore: Retrieved {len(df)} {tour.upper()} matches")
+                                
+                                # Save as main year file
+                                year_file = data_dir / tour / f"{tour}_matches_{current_year}.csv"
+                                df.to_csv(year_file, index=False)
+                                logger.info(f"  ✓ Saved to {year_file.name}")
+                            else:
+                                logger.info(f"  ℹ️  No matches found on FlashScore")
+                        except Exception as e:
+                            logger.warning(f"  ⚠️  Failed to fetch {tour.upper()} from FlashScore: {e}")
+                except Exception as e:
+                    logger.warning(f"⚠️  FlashScore fetch failed: {e}")
+                
+                # Step 2: Download historical data (last 4 years)
+                logger.info("📥 Step 2/2: Downloading historical data...")
                 downloader_module_path = project_root / "download_match_data.py"
                 if downloader_module_path.exists():
                     import importlib.util
@@ -267,12 +299,10 @@ def train_model_at_startup():
                     
                     downloader = TennisDataDownloader(data_dir=str(project_root / "data"))
                     
-                    # Download recent years (last 5 years + current year)
-                    from datetime import datetime
-                    current_year = datetime.now().year
-                    years_to_download = range(current_year - 5, current_year + 1)
+                    # Download last 4 years (not including current year - that comes from FlashScore)
+                    historical_years = range(current_year - 4, current_year)
                     
-                    for year in years_to_download:
+                    for year in historical_years:
                         logger.info(f"  Downloading ATP {year}...")
                         downloader.download_matches(year, tour="atp", verbose=False, use_fallback=True)
                         logger.info(f"  Downloading WTA {year}...")

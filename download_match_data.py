@@ -65,13 +65,13 @@ class TennisDataDownloader:
     def download_matches(self, year: int, tour: str = "atp", verbose: bool = False, use_fallback: bool = True) -> Optional[pd.DataFrame]:
         """
         Download match data for a specific year and tour.
-        Falls back to tennis-data.co.uk if Jeff Sackmann data is unavailable.
+        Falls back to tennis-data.co.uk, then FlashScore if Jeff Sackmann data is unavailable.
         
         Args:
             year: Year to download (e.g., 2023)
             tour: 'atp' or 'wta'
             verbose: If True, print detailed messages
-            use_fallback: If True, use tennis-data.co.uk as fallback
+            use_fallback: If True, use fallbacks (tennis-data.co.uk, then FlashScore)
             
         Returns:
             DataFrame with match data or None if download failed
@@ -101,13 +101,28 @@ class TennisDataDownloader:
                 if verbose:
                     print(f"✗ Error reading CSV: {e}")
         
-        # If Jeff Sackmann failed and fallback is enabled, try tennis-data.co.uk
+        # If Jeff Sackmann failed and fallback is enabled
         if use_fallback:
+            # Try tennis-data.co.uk
             if verbose:
                 print(f"Jeff Sackmann data not available, trying tennis-data.co.uk fallback...")
-            return self.download_matches_from_tennis_data_co_uk(year, tour)
-        else:
-            return None
+            
+            df = self.download_matches_from_tennis_data_co_uk(year, tour)
+            if df is not None:
+                return df
+            
+            # If tennis-data.co.uk also failed, try FlashScore for current year
+            from datetime import datetime
+            current_year = datetime.now().year
+            
+            if year == current_year:
+                if verbose:
+                    print(f"tennis-data.co.uk failed, trying FlashScore for current year {year}...")
+                return self.download_matches_from_flashscore(year, tour, verbose)
+        
+        if verbose:
+            print(f"  ⚠️  {tour.upper()} {year} could not be downloaded from any source")
+        return None
     
     def download_matches_from_tennis_data_co_uk(self, year: int, tour: str = "atp") -> Optional[pd.DataFrame]:
         """
@@ -273,6 +288,59 @@ class TennisDataDownloader:
             return None
         except Exception as e:
             print(f"  ✗ tennis-data.co.uk: Error - {e}")
+            return None
+    
+    def download_matches_from_flashscore(self, year: int, tour: str = "atp", verbose: bool = False) -> Optional[pd.DataFrame]:
+        """
+        Download match data from FlashScore using browser automation.
+        This is the final fallback for current year data when other sources fail.
+        
+        Args:
+            year: Year to download
+            tour: 'atp' or 'wta'
+            verbose: If True, print detailed messages
+            
+        Returns:
+            DataFrame with match data in Jeff Sackmann format, or None if failed
+        """
+        print(f"  → FlashScore Fallback: Fetching {tour.upper()} {year} (browser automation)...")
+        
+        try:
+            # Import FlashScore client
+            import sys
+            sys.path.insert(0, str(Path(__file__).parent))
+            from src.data.flashscore_client import fetch_recent_matches_from_flashscore
+            
+            if tour.lower() == "atp":
+                save_dir = self.atp_dir
+            else:
+                save_dir = self.wta_dir
+            
+            # Fetch last 14 days to get reasonable amount of data
+            save_path = save_dir / f"{tour}_matches_{year}_flashscore.csv"
+            df = fetch_recent_matches_from_flashscore(days=14, tour=tour, save_to_file=save_path)
+            
+            if df is not None and not df.empty:
+                print(f"  ✓ FlashScore: Retrieved {len(df)} matches")
+                
+                # Save as main year file
+                filename = f"{tour}_matches_{year}.csv"
+                filepath = save_dir / filename
+                df.to_csv(filepath, index=False)
+                print(f"  ✓ Saved to {filepath}")
+                
+                return df
+            else:
+                print(f"  ✗ FlashScore: No matches retrieved")
+                return None
+                
+        except ImportError as e:
+            if verbose:
+                print(f"  ✗ FlashScore client not available: {e}")
+            return None
+        except Exception as e:
+            if verbose:
+                print(f"  ✗ FlashScore error: {e}")
             return None
     
     def download_multiple_years(self, start_year: int, end_year: int, tour: str = "atp", verbose: bool = True) -> dict:
