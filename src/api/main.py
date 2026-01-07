@@ -33,6 +33,7 @@ from apscheduler.triggers.cron import CronTrigger
 from src.services.dependency_container import get_container, reset_container
 from src.services.rating_service import RatingService
 from src.services.betting_service import BettingService
+from src.infrastructure.adapters import ApiTennisAdapter
 from src.core.constants import (
     DEFAULT_MIN_EDGE,
     DEFAULT_RATINGS_FILE,
@@ -142,14 +143,48 @@ def update_match_data():
     logger.info("=" * 70)
     
     try:
-        from datetime import datetime
+        from datetime import datetime, timedelta
         import pandas as pd
         
         current_year = datetime.now().year
+        yesterday = datetime.now() - timedelta(days=1)
+        data_dir = project_root / "data"
         
-        # Step 1: Download recent years (current year + previous year)
+        # Step 1: Fetch yesterday's results from API-Tennis
+        logger.info(f"📥 Step 1/3: Fetching yesterday's results ({yesterday.strftime('%Y-%m-%d')}) from API-Tennis...")
+        try:
+            api_tennis = ApiTennisAdapter()
+            for tour in ['atp', 'wta']:
+                logger.info(f"  Fetching {tour.upper()} results...")
+                results = api_tennis.get_results_by_date(yesterday, tour)
+                
+                if results:
+                    new_df = pd.DataFrame(results)
+                    year_file = data_dir / tour / f"{tour}_matches_{current_year}.csv"
+                    
+                    if year_file.exists():
+                        existing_df = pd.read_csv(year_file)
+                        combined = pd.concat([existing_df, new_df], ignore_index=True)
+                        # Deduplicate by date and player names
+                        combined = combined.drop_duplicates(
+                            subset=['tourney_date', 'winner_name', 'loser_name'],
+                            keep='last'
+                        )
+                        combined = combined.sort_values('tourney_date')
+                        combined.to_csv(year_file, index=False)
+                        logger.info(f"  ✓ {tour.upper()} yesterday updated ({len(new_df)} new matches, {len(combined)} total)")
+                    else:
+                        year_file.parent.mkdir(parents=True, exist_ok=True)
+                        new_df.to_csv(year_file, index=False)
+                        logger.info(f"  ✓ {tour.upper()} yesterday created ({len(new_df)} matches)")
+                else:
+                    logger.info(f"  ℹ️  No {tour.upper()} results found for yesterday")
+        except Exception as e:
+            logger.warning(f"  ⚠️  Failed to fetch results from API-Tennis: {e}")
+
+        # Step 2: Download recent years (current year + previous year) from tennis-data.co.uk
         # This ensures we get updates even if tennis-data.co.uk updates weekly
-        logger.info("📥 Step 1/2: Downloading recent data...")
+        logger.info("📥 Step 2/3: Downloading recent data from tennis-data.co.uk...")
         downloader_module_path = project_root / "download_match_data.py"
         if downloader_module_path.exists():
             import importlib.util
@@ -190,8 +225,8 @@ def update_match_data():
         else:
             logger.warning("⚠️  download_match_data.py not found, skipping download")
         
-        # Step 2: Retrain model incrementally
-        logger.info("🏋️  Step 2/2: Retraining model with new data...")
+        # Step 3: Retrain model incrementally
+        logger.info("🏋️  Step 3/3: Retraining model with new data...")
         train_model_at_startup()
         
         logger.info("=" * 70)

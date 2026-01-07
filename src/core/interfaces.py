@@ -247,3 +247,25 @@ class IBettingEdgeCalculator(ABC):
     ) -> List[Dict[str, Any]]:
         """Find value bets from a list of matches."""
         pass
+
+
+class IMatchResultsProvider(ABC):
+    """
+    Interface for match result data providers.
+    
+    Allows swapping between different result APIs (e.g., API-Tennis, SofaScore, etc.)
+    """
+    
+    @abstractmethod
+    def get_results_by_date(self, date: datetime, tour: str) -> List[Dict[str, Any]]:
+        """
+        Fetch match results for a specific date and tour.
+        
+        Args:
+            date: Date to fetch results for
+            tour: Tour type ('atp' or 'wta')
+            
+        Returns:
+            List of match dictionaries in Jeff Sackmann format
+        """
+        pass

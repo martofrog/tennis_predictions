@@ -11,7 +11,7 @@ import requests
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 
-from src.core.interfaces import IOddsProvider, IOddsConverter
+from src.core.interfaces import IOddsProvider, IOddsConverter, IMatchResultsProvider
 from src.core.constants import (
     ODDS_API_BASE_URL,
     DEFAULT_REQUEST_TIMEOUT,
@@ -450,3 +450,149 @@ class FallbackOddsProvider(IOddsProvider):
             return self.primary_provider.get_usage_stats()
         else:
             return self.fallback_provider.get_usage_stats()
+
+
+class ApiTennisAdapter(IMatchResultsProvider):
+    """
+    Adapter for API-Tennis.com service.
+    
+    Fetches match results and transforms them to Jeff Sackmann format.
+    """
+    
+    BASE_URL = "https://api.api-tennis.com/tennis/"
+    
+    def __init__(self, api_key: Optional[str] = None):
+        """
+        Initialize API-Tennis adapter.
+        
+        Args:
+            api_key: API key for API-Tennis.com
+        """
+        self.api_key = api_key or os.getenv("API_TENNIS_KEY")
+        if not self.api_key:
+            raise ConfigurationError(
+                "API_TENNIS_KEY not found in environment variables"
+            )
+
+    def get_results_by_date(self, date: datetime, tour: str) -> List[Dict[str, Any]]:
+        """
+        Fetch results for a specific date and tour.
+        
+        Args:
+            date: Date to fetch results for
+            tour: Tour type ('atp' or 'wta')
+            
+        Returns:
+            List of match dictionaries in Jeff Sackmann format
+        """
+        date_str = date.strftime("%Y-%m-%d")
+        params = {
+            "method": "get_results",
+            "APIkey": self.api_key,
+            "date_start": date_str,
+            "date_stop": date_str
+        }
+        
+        try:
+            logger.info(f"Fetching {tour.upper()} results for {date_str} from API-Tennis...")
+            response = requests.get(self.BASE_URL, params=params, timeout=DEFAULT_REQUEST_TIMEOUT)
+            response.raise_for_status()
+            data = response.json()
+            
+            if "result" not in data:
+                logger.warning(f"No results found in API response for {date_str}")
+                return []
+                
+            results = data["result"]
+            matches = []
+            
+            for res in results:
+                # Filter by tour if possible
+                # API-Tennis returns all matches, so we might need to filter by tournament name
+                tourney_name = res.get("tournament_name", "")
+                if tour.lower() == "atp" and "WTA" in tourney_name:
+                    continue
+                if tour.lower() == "wta" and "ATP" in tourney_name:
+                    continue
+                
+                match = self._transform_to_sackmann_format(res, date, tour)
+                if match:
+                    matches.append(match)
+                    
+            return matches
+            
+        except Exception as e:
+            logger.error(f"Failed to fetch results from API-Tennis: {e}")
+            return []
+
+    def _transform_to_sackmann_format(self, res: Dict[str, Any], date: datetime, tour: str) -> Optional[Dict[str, Any]]:
+        """Transform API-Tennis result to Jeff Sackmann format."""
+        try:
+            winner_name = res.get("event_winner_team")
+            home_team = res.get("event_home_team")
+            away_team = res.get("event_away_team")
+            
+            if not winner_name or not home_team or not away_team:
+                return None
+                
+            if winner_name == home_team:
+                loser_name = away_team
+            else:
+                loser_name = home_team
+                
+            # Score parsing (API-Tennis returns "2 - 0" or similar)
+            score = res.get("event_final_result", "")
+            
+            return {
+                "tourney_id": f"API-{date.year}-{res.get('tournament_name', '')[:20].replace(' ', '')}",
+                "tourney_name": res.get("tournament_name", "Unknown"),
+                "surface": "Hard",  # API-Tennis often doesn't provide surface, default to Hard
+                "draw_size": "",
+                "tourney_level": "",
+                "tourney_date": date.strftime("%Y%m%d"),
+                "match_num": "",
+                "winner_id": "",
+                "winner_seed": "",
+                "winner_entry": "",
+                "winner_name": winner_name,
+                "winner_hand": "",
+                "winner_ht": "",
+                "winner_ioc": "",
+                "winner_age": "",
+                "winner_rank": "",
+                "winner_rank_points": "",
+                "loser_id": "",
+                "loser_seed": "",
+                "loser_entry": "",
+                "loser_name": loser_name,
+                "loser_hand": "",
+                "loser_ht": "",
+                "loser_ioc": "",
+                "loser_age": "",
+                "loser_rank": "",
+                "loser_rank_points": "",
+                "score": score,
+                "best_of": 3,
+                "round": "",
+                "minutes": "",
+                "w_ace": "",
+                "w_df": "",
+                "w_svpt": "",
+                "w_1stIn": "",
+                "w_1stWon": "",
+                "w_2ndWon": "",
+                "w_SvGms": "",
+                "w_bpSaved": "",
+                "w_bpFaced": "",
+                "l_ace": "",
+                "l_df": "",
+                "l_svpt": "",
+                "l_1stIn": "",
+                "l_1stWon": "",
+                "l_2ndWon": "",
+                "l_SvGms": "",
+                "l_bpSaved": "",
+                "l_bpFaced": "",
+            }
+        except Exception:
+            return None
