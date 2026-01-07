@@ -88,28 +88,28 @@ def update_match_data():
     logger.info("=" * 70)
     
     try:
-        # Step 1a: Fetch latest results from SofaScore (last 7 days)
-        logger.info("📥 Step 1a/3: Fetching latest results from SofaScore...")
+        # Step 1a: Fetch latest results from FlashScore (last 3 days)
+        logger.info("📥 Step 1a/3: Fetching latest results from FlashScore (browser automation)...")
         try:
-            from src.data.sofascore_client import fetch_recent_matches_from_sofascore
+            from src.data.flashscore_client import fetch_recent_matches_from_flashscore
             from datetime import datetime
+            import pandas as pd
             
             data_dir = project_root / "data"
             current_year = datetime.now().year
             
-            # Fetch last 7 days for both tours
+            # Fetch last 3 days for both tours (browser automation is slower)
             for tour in ['atp', 'wta']:
-                logger.info(f"  Fetching recent {tour.upper()} matches from SofaScore...")
+                logger.info(f"  Fetching recent {tour.upper()} matches from FlashScore...")
                 try:
-                    save_path = data_dir / tour / f"{tour}_matches_{current_year}_sofascore.csv"
-                    df = fetch_recent_matches_from_sofascore(days=7, tour=tour, save_to_file=save_path)
+                    save_path = data_dir / tour / f"{tour}_matches_{current_year}_flashscore.csv"
+                    df = fetch_recent_matches_from_flashscore(days=3, tour=tour, save_to_file=save_path)
                     if not df.empty:
-                        logger.info(f"  ✓ SofaScore: Retrieved {len(df)} {tour.upper()} matches")
+                        logger.info(f"  ✓ FlashScore: Retrieved {len(df)} {tour.upper()} matches")
                         
                         # Merge with existing year file
                         year_file = data_dir / tour / f"{tour}_matches_{current_year}.csv"
                         if year_file.exists():
-                            import pandas as pd
                             existing_df = pd.read_csv(year_file)
                             
                             # Combine and remove duplicates based on date, winner, loser
@@ -121,14 +121,18 @@ def update_match_data():
                             combined = combined.sort_values('tourney_date')
                             combined.to_csv(year_file, index=False)
                             logger.info(f"  ✓ Merged into {year_file.name} ({len(combined)} total matches)")
+                        else:
+                            # No existing file, just save FlashScore data
+                            df.to_csv(year_file, index=False)
+                            logger.info(f"  ✓ Created {year_file.name} ({len(df)} matches)")
                     else:
-                        logger.info(f"  ℹ️  No recent {tour.upper()} matches found on SofaScore")
+                        logger.info(f"  ℹ️  No recent {tour.upper()} matches found on FlashScore")
                 except Exception as e:
-                    logger.warning(f"  ⚠️  Failed to fetch {tour.upper()} from SofaScore: {e}")
+                    logger.warning(f"  ⚠️  Failed to fetch {tour.upper()} from FlashScore: {e}")
         except ImportError:
-            logger.warning("⚠️  SofaScore client not available, skipping real-time updates")
+            logger.warning("⚠️  FlashScore client not available, skipping real-time updates")
         except Exception as e:
-            logger.warning(f"⚠️  SofaScore update failed: {e}")
+            logger.warning(f"⚠️  FlashScore update failed: {e}")
         
         # Step 1b: Download historical/bulk data with fallback (tennis-data.co.uk)
         logger.info("📥 Step 1b/3: Updating bulk historical data...")

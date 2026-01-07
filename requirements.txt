@@ -11,3 +11,6 @@ beautifulsoup4>=4.12.0  # Optional: for HTML parsing if needed
 pytest>=7.4.0
 pytest-cov>=4.1.0
 httpx>=0.25.0  # Required by TestClient
+playwright>=1.50.0
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
