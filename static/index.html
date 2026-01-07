@@ -188,6 +188,24 @@
             margin: 20px 0;
         }
 
+        .rankings-section {
+            margin-bottom: 50px;
+        }
+        
+        .rankings-section:last-child {
+            margin-bottom: 0;
+        }
+        
+        .rankings-title {
+            font-size: 1.8rem;
+            font-weight: 300;
+            letter-spacing: 2px;
+            margin-bottom: 25px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #000;
+            text-transform: uppercase;
+        }
+
         .ratings-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
@@ -596,12 +614,12 @@
     <div class="container">
         <header>
             <h1>🎾 Tennis Predictions Dashboard</h1>
-            <p>ATP & WTA Player Ratings & Daily Value Bets</p>
+            <p>Men's & Women's Player Ratings & Daily Value Bets</p>
         </header>
 
         <div class="tour-selector">
-            <button class="tour-button active" onclick="selectTour('atp')" id="tour-atp">ATP</button>
-            <button class="tour-button" onclick="selectTour('wta')" id="tour-wta">WTA</button>
+            <button class="tour-button active" onclick="selectTour('atp')" id="tour-atp">Men's</button>
+            <button class="tour-button" onclick="selectTour('wta')" id="tour-wta">Women's</button>
         </div>
 
         <div class="tabs">
@@ -703,19 +721,29 @@
             content.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading rankings...</p></div>';
 
             try {
-                const response = await fetch(`${API_BASE}/api/v2/ratings?sort_by=rating`);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const ratings = await response.json();
+                // Load both Men's and Women's rankings separately
+                const [mensResponse, womensResponse] = await Promise.all([
+                    fetch(`${API_BASE}/api/v2/ratings?sort_by=rating&tour=atp`),
+                    fetch(`${API_BASE}/api/v2/ratings?sort_by=rating&tour=wta`)
+                ]);
 
-                if (ratings.length === 0) {
-                    content.innerHTML = '<div class="no-data">No ratings available</div>';
-                    return;
+                if (!mensResponse.ok || !womensResponse.ok) {
+                    throw new Error(`HTTP error!`);
                 }
 
-                let html = '<div class="ratings-grid">';
-                ratings.forEach((rating, index) => {
+                const mensRatings = await mensResponse.json();
+                const womensRatings = await womensResponse.json();
+
+                let html = '';
+
+                // Men's Rankings Section
+                html += `
+                    <div class="rankings-section">
+                        <h2 class="rankings-title">Men's Rankings</h2>
+                        <div class="ratings-grid">
+                `;
+                
+                mensRatings.slice(0, 50).forEach((rating, index) => {
                     html += `
                         <div class="rating-card">
                             <div class="rank">#${index + 1}</div>
@@ -724,7 +752,28 @@
                         </div>
                     `;
                 });
-                html += '</div>';
+                
+                html += '</div></div>';
+
+                // Women's Rankings Section
+                html += `
+                    <div class="rankings-section">
+                        <h2 class="rankings-title">Women's Rankings</h2>
+                        <div class="ratings-grid">
+                `;
+                
+                womensRatings.slice(0, 50).forEach((rating, index) => {
+                    html += `
+                        <div class="rating-card">
+                            <div class="rank">#${index + 1}</div>
+                            <div class="player-name">${rating.player}</div>
+                            <div class="rating-value">${rating.rating.toFixed(1)}</div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div></div>';
+
                 content.innerHTML = html;
             } catch (error) {
                 content.innerHTML = `<div class="error">Error loading rankings: ${error.message}</div>`;
