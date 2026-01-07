@@ -43,5 +43,6 @@ data/wta/*.csv
 !data/atp/.gitkeep
 !data/wta/.gitkeep
 
-# Ratings file (can be regenerated)
+# Ratings file and metadata (can be regenerated)
 data/ratings.json
+data/.ratings_metadata.json
