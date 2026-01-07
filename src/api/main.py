@@ -88,7 +88,7 @@ def update_match_data():
     logger.info("=" * 70)
     
     try:
-        # Step 1: Download latest match data
+        # Step 1: Download latest match data with fallback
         logger.info("📥 Step 1/2: Downloading latest match data...")
         downloader_module_path = project_root / "download_match_data.py"
         if downloader_module_path.exists():
@@ -101,27 +101,23 @@ def update_match_data():
             data_dir = project_root / "data"
             downloader = TennisDataDownloader(data_dir=str(data_dir))
             
-            # Download current year's data for both tours
+            # Download current year + last year for both tours (with fallback)
             from datetime import datetime
             current_year = datetime.now().year
-            logger.info(f"  Attempting ATP matches for {current_year}...")
-            atp_result = downloader.download_matches(current_year, tour="atp", verbose=False)
-            if atp_result is not None:
-                logger.info(f"  ✓ ATP {current_year} downloaded successfully")
-            else:
-                logger.info(f"  ℹ️  ATP {current_year} not available yet")
+            years_to_update = [current_year - 1, current_year]
             
-            logger.info(f"  Attempting WTA matches for {current_year}...")
-            wta_result = downloader.download_matches(current_year, tour="wta", verbose=False)
-            if wta_result is not None:
-                logger.info(f"  ✓ WTA {current_year} downloaded successfully")
-            else:
-                logger.info(f"  ℹ️  WTA {current_year} not available yet")
+            for year in years_to_update:
+                logger.info(f"  Attempting ATP {year}...")
+                atp_result = downloader.download_matches(year, tour="atp", verbose=True, use_fallback=True)
+                if atp_result is not None:
+                    logger.info(f"  ✓ ATP {year} updated ({len(atp_result)} matches)")
+                
+                logger.info(f"  Attempting WTA {year}...")
+                wta_result = downloader.download_matches(year, tour="wta", verbose=True, use_fallback=True)
+                if wta_result is not None:
+                    logger.info(f"  ✓ WTA {year} updated ({len(wta_result)} matches)")
             
-            if atp_result is not None or wta_result is not None:
-                logger.info("✓ Match data download completed")
-            else:
-                logger.info("ℹ️  No new data available (this is normal if files aren't published yet)")
+            logger.info("✓ Match data download completed")
         else:
             logger.warning("⚠️  download_match_data.py not found, skipping data download")
         
@@ -334,38 +330,32 @@ def startup_event():
                 current_year = datetime.now().year
                 recent_years = [current_year - 1, current_year]
                 
-                missing_data = False
+                logger.info(f"📥 Checking for match data (years: {recent_years})...")
+                
+                missing_data = []
                 for tour in ['atp', 'wta']:
                     tour_dir = data_dir / tour
                     for year in recent_years:
                         data_file = tour_dir / f"{tour}_matches_{year}.csv"
                         if not data_file.exists():
-                            missing_data = True
+                            missing_data.append((tour, year))
                             logger.info(f"  Missing: {tour.upper()} {year}")
                 
                 if missing_data:
-                    logger.info("📥 Downloading missing match data...")
+                    logger.info("📥 Downloading missing match data (with SofaScore fallback)...")
                     downloader = TennisDataDownloader(data_dir=str(data_dir))
-                    downloaded_any = False
-                    for tour in ['atp', 'wta']:
-                        for year in recent_years:
-                            tour_dir = data_dir / tour
-                            data_file = tour_dir / f"{tour}_matches_{year}.csv"
-                            if not data_file.exists():
-                                logger.info(f"  Attempting to download {tour.upper()} {year}...")
-                                result = downloader.download_matches(year, tour=tour)
-                                if result is not None:
-                                    downloaded_any = True
-                                    logger.info(f"  ✓ {tour.upper()} {year} downloaded successfully")
-                                else:
-                                    logger.info(f"  ℹ️  {tour.upper()} {year} not available yet (this is normal)")
                     
-                    if downloaded_any:
-                        logger.info("✓ Match data download completed")
-                    else:
-                        logger.info("ℹ️  No new data available to download (files may not be published yet)")
+                    for tour, year in missing_data:
+                        logger.info(f"  Attempting {tour.upper()} {year}...")
+                        result = downloader.download_matches(year, tour=tour, verbose=True, use_fallback=True)
+                        if result is not None:
+                            logger.info(f"  ✓ {tour.upper()} {year} downloaded successfully ({len(result)} matches)")
+                        else:
+                            logger.warning(f"  ⚠️  {tour.upper()} {year} could not be downloaded")
+                    
+                    logger.info("✓ Match data check completed")
                 else:
-                    logger.info("✓ Match data is up to date")
+                    logger.info("✓ All required match data is present")
             else:
                 logger.debug("download_match_data.py not found, skipping automatic download")
         except Exception as e:
