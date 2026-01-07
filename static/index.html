@@ -470,6 +470,13 @@
             text-align: center;
             min-width: 100px;
             vertical-align: middle;
+            font-family: 'Courier New', monospace;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        
+        .score-cell.winner {
+            font-weight: bold;
         }
 
         .vs-cell {
@@ -861,11 +868,9 @@
                     <table class="results-table">
                         <thead>
                             <tr>
-                                <th>Player 1</th>
-                                <th>Score</th>
-                                <th></th>
-                                <th>Score</th>
-                                <th>Player 2</th>
+                                <th>Winner</th>
+                                <th colspan="3">Score</th>
+                                <th>Loser</th>
                                 <th>Surface</th>
                                 <th>Tour</th>
                             </tr>
@@ -877,20 +882,29 @@
                     const player1Won = match.winner === match.player1;
                     const player2Won = match.winner === match.player2;
                     
-                    const score1 = match.player1_score || '—';
-                    const score2 = match.player2_score || '—';
+                    // Format scores in standard tennis format (set-by-set)
+                    // If we have separate scores, combine them: "6 6 7" + "4 3 6" -> "6-4 6-3 7-6"
+                    let formattedScore = '—';
+                    if (match.player1_score && match.player2_score) {
+                        const p1Sets = match.player1_score.trim().split(/\s+/);
+                        const p2Sets = match.player2_score.trim().split(/\s+/);
+                        
+                        const sets = [];
+                        for (let i = 0; i < Math.max(p1Sets.length, p2Sets.length); i++) {
+                            if (p1Sets[i] && p2Sets[i]) {
+                                sets.push(`${p1Sets[i]}-${p2Sets[i]}`);
+                            }
+                        }
+                        formattedScore = sets.join(' ');
+                    }
 
                     html += `
                         <tr>
                             <td class="player-name-cell ${player1Won ? 'winner' : 'loser'}">
                                 ${match.player1}
                             </td>
-                            <td class="score-cell ${player1Won ? 'winner' : 'loser'}">
-                                ${score1}
-                            </td>
-                            <td class="vs-cell">vs</td>
-                            <td class="score-cell ${player2Won ? 'winner' : 'loser'}">
-                                ${score2}
+                            <td class="score-cell ${player1Won ? 'winner' : 'loser'}" colspan="3">
+                                ${formattedScore}
                             </td>
                             <td class="player-name-cell ${player2Won ? 'winner' : 'loser'}">
                                 ${match.player2}
