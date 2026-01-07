@@ -198,6 +198,50 @@ def train_model_at_startup():
             logger.info("📊 No ratings found - Running FULL training from scratch...")
             last_update_date = None
         
+        # Check if we have any match data files
+        atp_dir = project_root / "data" / "atp"
+        wta_dir = project_root / "data" / "wta"
+        atp_files = list(atp_dir.glob("atp_matches_*.csv")) if atp_dir.exists() else []
+        wta_files = list(wta_dir.glob("wta_matches_*.csv")) if wta_dir.exists() else []
+        
+        # If no data files exist, download them first
+        if not atp_files and not wta_files:
+            logger.warning("⚠️  No match data files found - downloading historical data...")
+            logger.info("📥 This may take a few minutes on first run...")
+            
+            try:
+                # Import and run the downloader
+                downloader_module_path = project_root / "download_match_data.py"
+                if downloader_module_path.exists():
+                    import importlib.util
+                    spec = importlib.util.spec_from_file_location("download_match_data", downloader_module_path)
+                    download_module = importlib.util.module_from_spec(spec)
+                    spec.loader.exec_module(download_module)
+                    TennisDataDownloader = download_module.TennisDataDownloader
+                    
+                    downloader = TennisDataDownloader(data_dir=str(project_root / "data"))
+                    
+                    # Download recent years (last 5 years + current year)
+                    from datetime import datetime
+                    current_year = datetime.now().year
+                    years_to_download = range(current_year - 5, current_year + 1)
+                    
+                    for year in years_to_download:
+                        logger.info(f"  Downloading ATP {year}...")
+                        downloader.download_matches(year, tour="atp", verbose=False, use_fallback=True)
+                        logger.info(f"  Downloading WTA {year}...")
+                        downloader.download_matches(year, tour="wta", verbose=False, use_fallback=True)
+                    
+                    logger.info("✓ Data download completed")
+                else:
+                    logger.error("❌ download_match_data.py not found - cannot download data")
+                    logger.error("   Please run: python download_match_data.py")
+                    return
+            except Exception as e:
+                logger.error(f"❌ Failed to download data: {e}")
+                logger.error("   Please run: python download_match_data.py")
+                return
+        
         # Get container - this will load ratings from file if they exist
         # IMPORTANT: We must get the container AFTER checking/deleting the ratings file
         # because the rating system loads ratings in its __init__ method
@@ -209,7 +253,8 @@ def train_model_at_startup():
         matches_df = load_match_data()
         
         if matches_df.empty:
-            logger.warning("⚠️  No match data found - skipping training")
+            logger.error("❌ No match data found after download attempt")
+            logger.error("   Please check data directory and try running: python download_match_data.py")
             return
         
         logger.info(f"✓ Loaded {len(matches_df)} total matches")
