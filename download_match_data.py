@@ -142,8 +142,18 @@ class TennisDataDownloader:
             
             print(f"  ✓ Downloaded {len(response.content)} bytes")
             
+            # Check if file is too small (likely empty/invalid)
+            if len(response.content) < 5000:  # Less than 5KB is suspicious
+                print(f"  ✗ File too small ({len(response.content)} bytes) - likely no data for {year}")
+                return None
+            
             # Parse Excel file
-            df_raw = pd.read_excel(BytesIO(response.content))
+            try:
+                df_raw = pd.read_excel(BytesIO(response.content))
+            except Exception as e:
+                print(f"  ✗ tennis-data.co.uk: Error parsing Excel - {e}")
+                return None
+            
             print(f"  ✓ Parsed {len(df_raw)} matches")
             
             # Convert to Jeff Sackmann format
