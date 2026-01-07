@@ -668,6 +668,30 @@ async def clear_cache(
         return {"message": "Cleared all cache"}
 
 
+def _get_player_tour_lookup() -> dict:
+    """
+    Build a lookup dictionary of player names to their tour (atp/wta).
+    Uses the actual match data to determine which tour each player belongs to.
+    """
+    from src.data.data_loader import load_match_data
+    
+    player_tours = {}
+    
+    # Load recent matches for both tours
+    for tour in ['atp', 'wta']:
+        matches = load_match_data(years=[2024, 2023, 2022], tour=tour)
+        if not matches.empty:
+            for col in ['winner_name', 'loser_name']:
+                if col in matches.columns:
+                    players = matches[col].dropna().unique()
+                    for player in players:
+                        player_name = str(player).strip()
+                        if '/' not in player_name:  # Skip doubles
+                            player_tours[player_name.lower()] = tour
+    
+    return player_tours
+
+
 @app.get("/api/v2/matches/yesterday", response_model=List[MatchResultDTO], tags=["Matches"])
 async def get_yesterday_matches(
     tour: Optional[str] = Query(None, description="Filter by tour ('atp' or 'wta')"),
@@ -688,6 +712,9 @@ async def get_yesterday_matches(
     
     target_date = datetime.now() - timedelta(days=days_ago)
     logger.info(f"Fetching matches for {target_date.strftime('%Y-%m-%d')} (tour={tour})")
+    
+    # Build player tour lookup for accurate filtering
+    player_tour_lookup = _get_player_tour_lookup() if tour else None
     
     try:
         # Try SofaScore first (real-time data)
@@ -817,6 +844,15 @@ async def get_yesterday_matches(
             # Filter out doubles matches (player names contain "/" or " / ")
             if '/' in player1 or '/' in player2 or '/' in winner or '/' in loser:
                 continue
+            
+            # Filter by tour if specified (using player lookup)
+            if tour and player_tour_lookup:
+                player1_tour = player_tour_lookup.get(player1.lower())
+                player2_tour = player_tour_lookup.get(player2.lower())
+                
+                # Skip if either player doesn't match the requested tour
+                if player1_tour != tour and player2_tour != tour:
+                    continue
             
             results.append(MatchResultDTO(
                 date=date_str,
