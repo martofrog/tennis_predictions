@@ -488,6 +488,9 @@ async def get_ratings(
     
     all_ratings = rating_service.get_all_ratings(sort_by=sort_by, surface=surface)
     
+    # Filter out doubles players (names containing "/")
+    all_ratings = [r for r in all_ratings if '/' not in r.player]
+    
     # Filter by tour if specified
     if tour:
         from src.data.data_loader import load_match_data
@@ -498,7 +501,9 @@ async def get_ratings(
         
         for col in ['winner_name', 'loser_name']:
             if col in tour_matches.columns:
-                tour_players.update(tour_matches[col].dropna().unique())
+                # Also filter out doubles from tour data
+                players = tour_matches[col].dropna().unique()
+                tour_players.update([p for p in players if '/' not in str(p)])
         
         # Filter ratings to only include players from this tour
         all_ratings = [r for r in all_ratings if r.player in tour_players]
@@ -584,6 +589,12 @@ async def get_value_bets(
             regions=regions,
             sport=sport
         )
+        
+        # Filter out doubles matches (player names containing "/")
+        value_bets = [
+            vb for vb in value_bets 
+            if '/' not in vb.player1 and '/' not in vb.player2 and '/' not in vb.bet_on_player
+        ]
         
         return [
             ValueBetDTO(
@@ -801,6 +812,10 @@ async def get_yesterday_matches(
                 date_str = target_date.strftime('%Y-%m-%d')
             
             if not player1 or not player2 or not winner or not loser:
+                continue
+            
+            # Filter out doubles matches (player names contain "/" or " / ")
+            if '/' in player1 or '/' in player2 or '/' in winner or '/' in loser:
                 continue
             
             results.append(MatchResultDTO(
