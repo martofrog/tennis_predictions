@@ -146,35 +146,55 @@ def download_recent_data():
         return 0, 0
 
 
-def train_model():
+def train_model(force_full: bool = False):
     """
-    Train/update the model with all available data.
-    Updates player ratings from all matches.
+    Train/update the model with incremental or full training.
+    
+    Args:
+        force_full: If True, retrain from scratch. If False, incremental update.
     
     Returns:
         Number of players with updated ratings, or 0 if failed
     """
-    logger.info("Training model with all available data...")
+    from src.services.dependency_container import get_container
+    
+    # Check if ratings exist
+    container = get_container()
+    rating_service = container.rating_service()
+    ratings_exist = rating_service.ratings_exist()
+    
+    if not ratings_exist:
+        logger.info("No existing ratings found - performing full training...")
+        force_full = True
+    elif force_full:
+        logger.info("Force full retrain requested - processing all matches...")
+    else:
+        logger.info("Incremental update mode - processing only new matches...")
     
     try:
         from src.data.update_data import update_ratings_from_matches
-        from src.services.dependency_container import get_container
         
         # Update ratings from all available years
         current_year = datetime.now().year
         all_years = list(range(2020, current_year + 1))
         
-        logger.info(f"Training on matches from years: {all_years}")
-        
         # This function loads matches, updates ratings, and saves them
-        update_ratings_from_matches(years=all_years, tour=None)
+        # incremental=True means it will only process new matches if ratings exist
+        update_ratings_from_matches(
+            years=all_years,
+            tour=None,
+            incremental=True,
+            force_full=force_full
+        )
         
-        # Get rating count from container
+        # Get rating count from container (reload to get updated ratings)
+        from src.services.dependency_container import reset_container
+        reset_container()
         container = get_container()
         rating_system = container.rating_system()
         ratings_count = len(rating_system.get_all_ratings())
         
-        logger.info(f"✓ Model trained - {ratings_count} players rated")
+        logger.info(f"✓ Model updated - {ratings_count} players rated")
         return ratings_count
         
     except Exception as e:
@@ -182,17 +202,18 @@ def train_model():
         return 0
 
 
-def run_unified_update(force_historical: bool = False):
+def run_unified_update(force_historical: bool = False, force_full_retrain: bool = False):
     """
     Run the unified update process.
     
     This function:
     1. Downloads historical data if missing (or if force_historical=True)
     2. Downloads last 7 days from SofaScore
-    3. Trains the model with all data
+    3. Trains the model (incrementally by default, or full if force_full_retrain=True)
     
     Args:
         force_historical: If True, re-download all historical data even if it exists
+        force_full_retrain: If True, retrain from scratch instead of incremental
         
     Returns:
         Dictionary with update results
@@ -238,9 +259,9 @@ def run_unified_update(force_historical: bool = False):
         total_new = atp_added + wta_added
         logger.info(f"✓ Total new matches: {total_new}")
         
-        # Step 3: Train model
-        logger.info("\nStep 3: Train Model")
-        total_players = train_model()
+        # Step 3: Train model (incremental by default)
+        logger.info("\nStep 3: Update Model")
+        total_players = train_model(force_full=force_full_retrain)
         results['total_players'] = total_players
         
         # Summary
@@ -273,9 +294,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Run unified update process')
     parser.add_argument('--force-historical', action='store_true',
                        help='Force re-download of all historical data')
+    parser.add_argument('--full-retrain', action='store_true',
+                       help='Force full model retrain instead of incremental update')
     args = parser.parse_args()
     
-    results = run_unified_update(force_historical=args.force_historical)
+    results = run_unified_update(
+        force_historical=args.force_historical,
+        force_full_retrain=args.full_retrain
+    )
     
     if not results['success']:
         sys.exit(1)

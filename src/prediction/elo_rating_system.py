@@ -303,8 +303,15 @@ class TennisEloRatingSystem(IRatingSystem):
         except Exception:
             return 1.0
     
-    def save_ratings(self) -> None:
-        """Save current ratings to repository."""
+    def save_ratings(self, last_update_date: str = None) -> None:
+        """
+        Save current ratings to repository with metadata.
+        
+        Args:
+            last_update_date: ISO format date string of last processed match
+        """
+        from datetime import datetime
+        
         # Convert to format expected by repository
         ratings_to_save = {
             player: {
@@ -317,11 +324,26 @@ class TennisEloRatingSystem(IRatingSystem):
             }
             for player, ratings in self._ratings.items()
         }
+        
+        # Add metadata
+        metadata = {
+            '_metadata': {
+                'last_update': last_update_date or datetime.now().isoformat(),
+                'total_players': len(ratings_to_save),
+                'version': '2.0'
+            }
+        }
+        ratings_to_save.update(metadata)
+        
         self.repository.save(ratings_to_save)
     
     def reload_ratings(self) -> None:
         """Reload ratings from repository."""
         ratings_data = self.repository.load()
+        
+        # Remove metadata if present
+        if isinstance(ratings_data, dict) and '_metadata' in ratings_data:
+            ratings_data = {k: v for k, v in ratings_data.items() if k != '_metadata'}
         
         if isinstance(ratings_data, dict) and ratings_data:
             first_key = list(ratings_data.keys())[0]
@@ -340,3 +362,15 @@ class TennisEloRatingSystem(IRatingSystem):
                 }
         else:
             self._ratings = {}
+    
+    def get_last_update_date(self) -> str:
+        """
+        Get the last update date from ratings metadata.
+        
+        Returns:
+            ISO format date string, or None if not found
+        """
+        ratings_data = self.repository.load()
+        if isinstance(ratings_data, dict) and '_metadata' in ratings_data:
+            return ratings_data['_metadata'].get('last_update')
+        return None

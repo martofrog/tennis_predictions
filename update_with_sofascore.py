@@ -39,13 +39,27 @@ def main():
         action='store_true',
         help='Force re-download of all historical data (2020-2025)'
     )
+    parser.add_argument(
+        '--full-retrain',
+        action='store_true',
+        help='Force full model retrain instead of incremental update (takes 3-4 minutes)'
+    )
     args = parser.parse_args()
     
     try:
         from src.scripts.unified_update import run_unified_update
         
         logger.info("Starting Tennis Predictions update...")
-        results = run_unified_update(force_historical=args.force_historical)
+        
+        if args.full_retrain:
+            logger.info("Full retrain mode: will process all 26K+ matches")
+        else:
+            logger.info("Incremental mode: will process only new matches (faster)")
+        
+        results = run_unified_update(
+            force_historical=args.force_historical,
+            force_full_retrain=args.full_retrain
+        )
         
         if results['success']:
             logger.info("✓ Update completed successfully")

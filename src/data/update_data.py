@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 import logging
 import argparse
+import pandas as pd
 
 # Add project root to path
 project_root = Path(__file__).resolve().parent.parent.parent
@@ -27,7 +28,9 @@ def update_ratings_from_matches(
     years: list = None,
     tour: str = None,
     ratings_file: str = DEFAULT_RATINGS_FILE,
-    data_dir: str = DEFAULT_DATA_DIR
+    data_dir: str = DEFAULT_DATA_DIR,
+    incremental: bool = True,
+    force_full: bool = False
 ):
     """
     Update player ratings from historical match data.
@@ -37,10 +40,19 @@ def update_ratings_from_matches(
         tour: Tour filter ('atp' or 'wta', None = both)
         ratings_file: Path to ratings JSON file
         data_dir: Directory containing match data CSV files
+        incremental: If True, only process matches since last update
+        force_full: If True, force full retrain even if ratings exist
     """
     container = get_container(ratings_file=ratings_file, data_dir=data_dir)
     rating_service = container.rating_service()
     rating_system = container.rating_system()
+    
+    # Check if we should do incremental update
+    last_update_date = None
+    if incremental and not force_full and rating_service.ratings_exist():
+        last_update_date = rating_system.get_last_update_date()
+        if last_update_date:
+            logger.info(f"Incremental update mode: processing matches since {last_update_date}")
     
     # Load match data
     logger.info(f"Loading match data (years={years}, tour={tour})...")
@@ -49,6 +61,29 @@ def update_ratings_from_matches(
     if matches_df.empty:
         logger.warning("No match data found")
         return
+    
+    # Filter to only new matches if incremental
+    if last_update_date:
+        # Convert last_update_date to datetime for comparison
+        from datetime import datetime
+        try:
+            last_update_dt = datetime.fromisoformat(last_update_date.replace('Z', '+00:00'))
+            
+            # Ensure date column is datetime
+            if 'date' in matches_df.columns:
+                matches_df['date'] = pd.to_datetime(matches_df['date'], errors='coerce')
+                original_count = len(matches_df)
+                matches_df = matches_df[matches_df['date'] > last_update_dt]
+                new_count = len(matches_df)
+                
+                if new_count == 0:
+                    logger.info("No new matches to process - ratings are up to date")
+                    return
+                
+                logger.info(f"Incremental update: {new_count} new matches (skipped {original_count - new_count} already processed)")
+        except Exception as e:
+            logger.warning(f"Could not parse last update date, doing full update: {e}")
+            last_update_date = None
     
     logger.info(f"Loaded {len(matches_df)} matches")
     
@@ -103,10 +138,22 @@ def update_ratings_from_matches(
             logger.warning(f"Error processing match: {e}")
             continue
     
-    # Save ratings
-    rating_service.save_ratings()
+    # Save ratings with last update date
+    latest_match_date = None
+    if not matches_df.empty and 'date' in matches_df.columns:
+        latest_match_date = matches_df['date'].max()
+        if pd.notna(latest_match_date):
+            latest_match_date = latest_match_date.isoformat()
+    
+    # Save with metadata
+    if hasattr(rating_system, 'save_ratings'):
+        rating_system.save_ratings(last_update_date=latest_match_date)
+    else:
+        rating_service.save_ratings()
     
     logger.info(f"Completed: {processed} matches processed, {errors} errors")
+    if latest_match_date:
+        logger.info(f"Last processed match date: {latest_match_date}")
     logger.info(f"Ratings saved to {ratings_file}")
 
 
