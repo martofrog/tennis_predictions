@@ -731,13 +731,48 @@ async def get_yesterday_matches(
             player1_score = None
             player2_score = None
             
-            for col in ['player1_score', 'winner_score']:
-                if col in row.index and pd.notna(row[col]):
-                    player1_score = str(row[col]).strip()
+            # SofaScore returns a single 'score' field with winner's score first (e.g., "6-4 6-3")
+            if 'score' in row.index and pd.notna(row['score']):
+                score_str = str(row['score']).strip()
+                
+                if score_str:
+                    # Parse the score and create both player scores
+                    # Score format: "6-4 6-3" means winner won 6-4, 6-3
+                    sets = score_str.split()
+                    winner_sets = []
+                    loser_sets = []
+                    
+                    for set_score in sets:
+                        if '-' in set_score:
+                            parts = set_score.split('-')
+                            if len(parts) == 2:
+                                winner_sets.append(parts[0])
+                                loser_sets.append(parts[1])
+                    
+                    # Build score strings
+                    winner_score_str = ' '.join(winner_sets) if winner_sets else score_str
+                    loser_score_str = ' '.join(loser_sets) if loser_sets else None
+                    
+                    # Assign to correct player
+                    if winner == player1:
+                        player1_score = winner_score_str
+                        player2_score = loser_score_str
+                    elif winner == player2:
+                        player2_score = winner_score_str
+                        player1_score = loser_score_str
             
-            for col in ['player2_score', 'loser_score']:
-                if col in row.index and pd.notna(row[col]):
-                    player2_score = str(row[col]).strip()
+            # Try separate score columns (for CSV fallback)
+            if not player1_score:
+                for col in ['player1_score', 'winner_score']:
+                    if col in row.index and pd.notna(row[col]):
+                        player1_score = str(row[col]).strip()
+                        break
+            
+            if not player2_score:
+                for col in ['player2_score', 'loser_score']:
+                    if col in row.index and pd.notna(row[col]):
+                        player2_score = str(row[col]).strip()
+                        break
             
             # Extract surface
             surface = None
