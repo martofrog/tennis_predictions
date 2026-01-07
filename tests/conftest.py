@@ -25,8 +25,8 @@ from src.services.dependency_container import get_container, reset_container
 
 @pytest.fixture
 def client():
-    """FastAPI test client."""
-    with TestClient(app) as test_client:
+    """FastAPI test client with CORS support."""
+    with TestClient(app, base_url="http://testserver") as test_client:
         yield test_client
 
 

@@ -462,9 +462,11 @@ class HealthResponseDTO(BaseModel):
 
 class CacheStatusDTO(BaseModel):
     """Cache status response."""
-    cache_enabled: bool
-    cached_keys: List[str]
-    cache_details: Dict[str, Any]
+    enabled: bool
+    size: int
+    ttl_seconds: int
+    cached_keys: List[str] = []
+    cache_details: Dict[str, Any] = {}
 
 
 # Dependency Injection Helpers
@@ -519,7 +521,7 @@ async def root():
     }
 
 
-@app.get("/health", response_model=HealthResponseDTO, tags=["General"])
+@app.get("/api/v2/health", response_model=HealthResponseDTO, tags=["General"])
 async def health_check():
     """
     Health check endpoint.
@@ -540,14 +542,23 @@ async def health_check():
 
 
 @app.get("/api/v2/ratings", response_model=List[PlayerRatingDTO], tags=["Ratings"])
-async def get_ratings():
+async def get_ratings(
+    tour: Optional[str] = Query(None, description="Filter by tour (atp or wta)", pattern="^(atp|wta)$"),
+    limit: Optional[int] = Query(None, description="Limit number of results", ge=1),
+    surface: Optional[str] = Query(None, description="Get ratings for specific surface", pattern="^(hard|clay|grass)$")
+):
     """
-    Get player ratings (all players, both ATP and WTA).
+    Get player ratings with optional filtering.
+    
+    Args:
+        tour: Filter by tour (atp or wta)
+        limit: Maximum number of results to return
+        surface: Get ratings for specific surface (hard, clay, grass)
     
     Demonstrates: Dependency Inversion (depends on IRatingSystem via service)
     """
     rating_service = get_rating_service()
-    all_ratings = rating_service.get_all_ratings()
+    all_ratings = rating_service.get_all_ratings(surface=surface)
     
     # Build player-to-tour lookup
     player_tour_lookup = _get_player_tour_lookup()
@@ -558,13 +569,21 @@ async def get_ratings():
         if '/' in r.player:
             continue  # Skip doubles
         
-        tour = player_tour_lookup.get(r.player, "atp")  # Default to ATP if unknown
+        tour_value = player_tour_lookup.get(r.player, "atp")  # Default to ATP if unknown
+        
+        # Filter by tour if specified
+        if tour and tour_value != tour:
+            continue
         
         result.append(PlayerRatingDTO(
             player_name=r.player,
             rating=r.rating,
-            tour=tour
+            tour=tour_value
         ))
+    
+    # Apply limit if specified
+    if limit:
+        result = result[:limit]
     
     return result
 
@@ -736,7 +755,7 @@ def _get_player_tour_lookup() -> Dict[str, str]:
 async def predict_match(
     player1: str = Query(..., description="Player 1 name"),
     player2: str = Query(..., description="Player 2 name"),
-    surface: str = Query("hard", description="Court surface (hard, clay, grass)")
+    surface: str = Query("hard", description="Court surface (hard, clay, grass)", pattern="^(hard|clay|grass)$")
 ):
     """
     Predict match outcome.
@@ -865,7 +884,9 @@ async def get_cache_status():
         }
     
     return CacheStatusDTO(
-        cache_enabled=True,
+        enabled=True,
+        size=len(keys),
+        ttl_seconds=3600,  # Default TTL from cache implementation
         cached_keys=keys,
         cache_details=details
     )
@@ -899,7 +920,7 @@ async def reset_dependencies():
     Demonstrates: Dependency Injection benefits (easy to reset/reconfigure)
     """
     reset_container()
-    return {"message": "Dependencies reset", "timestamp": datetime.now().isoformat()}
+    return {"message": "Container reset successfully", "timestamp": datetime.now().isoformat()}
 
 
 # Error Handlers

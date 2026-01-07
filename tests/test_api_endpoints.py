@@ -26,7 +26,7 @@ class TestGeneralEndpoints:
     
     def test_health_endpoint(self, client):
         """Test health check endpoint."""
-        response = client.get("/health")
+        response = client.get("/api/v2/health")
         
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
@@ -331,7 +331,8 @@ class TestResponseHeaders:
     
     def test_cors_headers(self, client):
         """Test that CORS headers are present."""
-        response = client.get("/api/v2/health")
+        # Send request with Origin header to trigger CORS
+        response = client.get("/api/v2/health", headers={"Origin": "http://localhost:3000"})
         
         # CORS middleware should add these headers
         assert "access-control-allow-origin" in response.headers
