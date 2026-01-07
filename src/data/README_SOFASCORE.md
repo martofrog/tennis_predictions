@@ -78,10 +78,12 @@ Use a proxy/scraping service:
 
 ```python
 # Example with ScraperAPI
-SCRAPER_API_KEY = "your_key"
+import os
+# Replace YOUR_API_KEY_HERE with your actual ScraperAPI key
+api_key = os.getenv("SCRAPER_API_KEY", "YOUR_API_KEY_HERE")
 proxies = {
-    'http': f'http://scraperapi:{SCRAPER_API_KEY}@proxy-server.scraperapi.com:8001',
-    'https': f'http://scraperapi:{SCRAPER_API_KEY}@proxy-server.scraperapi.com:8001'
+    'http': f'http://scraperapi:{api_key}@proxy-server.scraperapi.com:8001',
+    'https': f'http://scraperapi:{api_key}@proxy-server.scraperapi.com:8001'
 }
 
 client = SofaScoreClient()
