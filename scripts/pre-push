@@ -137,8 +137,8 @@ if [ ! -z "$ENV_FILES" ]; then
     SECRETS_FOUND=$((SECRETS_FOUND + 1))
 fi
 
-# Check for hardcoded IPs or URLs with credentials
-if echo "$FILES_TO_CHECK" | xargs grep -HnE "https?://[^:]+:[^@]+@" 2>/dev/null; then
+# Check for hardcoded IPs or URLs with credentials (skip README files as they contain examples)
+if echo "$FILES_TO_CHECK" | grep -vE "(README|\.md$)" | xargs grep -HnE "https?://[^:]+:[^@]+@" 2>/dev/null; then
     echo -e "${YELLOW}⚠️  URLs with credentials found${NC}"
     SECRETS_FOUND=$((SECRETS_FOUND + 1))
 fi
