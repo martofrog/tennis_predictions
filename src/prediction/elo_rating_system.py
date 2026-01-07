@@ -305,14 +305,13 @@ class TennisEloRatingSystem(IRatingSystem):
     
     def save_ratings(self, last_update_date: str = None) -> None:
         """
-        Save current ratings to repository with metadata.
+        Save current ratings to repository.
+        Metadata is saved separately by _save_metadata().
         
         Args:
             last_update_date: ISO format date string of last processed match
         """
-        from datetime import datetime
-        
-        # Convert to format expected by repository
+        # Convert to format expected by repository (pure player data, no metadata)
         ratings_to_save = {
             player: {
                 'rating': ratings.get('overall', self.default_rating),
@@ -325,25 +324,62 @@ class TennisEloRatingSystem(IRatingSystem):
             for player, ratings in self._ratings.items()
         }
         
-        # Add metadata
-        metadata = {
-            '_metadata': {
-                'last_update': last_update_date or datetime.now().isoformat(),
-                'total_players': len(ratings_to_save),
-                'version': '2.0'
-            }
-        }
-        ratings_to_save.update(metadata)
-        
         self.repository.save(ratings_to_save)
+        
+        # Save metadata separately
+        self._save_metadata(last_update_date, len(ratings_to_save))
+    
+    def _save_metadata(self, last_update_date: str, total_players: int) -> None:
+        """
+        Save metadata to separate file.
+        
+        Args:
+            last_update_date: ISO format date string
+            total_players: Number of players rated
+        """
+        from datetime import datetime
+        import json
+        from pathlib import Path
+        
+        metadata = {
+            'last_update': last_update_date or datetime.now().isoformat(),
+            'total_players': total_players,
+            'version': '2.0',
+            'last_full_retrain': None  # Can be set when doing full retrain
+        }
+        
+        # Save to .ratings_metadata.json (in same directory as ratings.json)
+        ratings_path = Path(self.repository.file_path)
+        metadata_path = ratings_path.parent / '.ratings_metadata.json'
+        
+        with open(metadata_path, 'w') as f:
+            json.dump(metadata, f, indent=2)
+    
+    def _load_metadata(self) -> dict:
+        """
+        Load metadata from separate file.
+        
+        Returns:
+            Metadata dictionary, or empty dict if not found
+        """
+        import json
+        from pathlib import Path
+        
+        ratings_path = Path(self.repository.file_path)
+        metadata_path = ratings_path.parent / '.ratings_metadata.json'
+        
+        if not metadata_path.exists():
+            return {}
+        
+        try:
+            with open(metadata_path, 'r') as f:
+                return json.load(f)
+        except Exception:
+            return {}
     
     def reload_ratings(self) -> None:
-        """Reload ratings from repository."""
+        """Reload ratings from repository (metadata is in separate file)."""
         ratings_data = self.repository.load()
-        
-        # Remove metadata if present
-        if isinstance(ratings_data, dict) and '_metadata' in ratings_data:
-            ratings_data = {k: v for k, v in ratings_data.items() if k != '_metadata'}
         
         if isinstance(ratings_data, dict) and ratings_data:
             first_key = list(ratings_data.keys())[0]
@@ -365,12 +401,10 @@ class TennisEloRatingSystem(IRatingSystem):
     
     def get_last_update_date(self) -> str:
         """
-        Get the last update date from ratings metadata.
+        Get the last update date from metadata file.
         
         Returns:
             ISO format date string, or None if not found
         """
-        ratings_data = self.repository.load()
-        if isinstance(ratings_data, dict) and '_metadata' in ratings_data:
-            return ratings_data['_metadata'].get('last_update')
-        return None
+        metadata = self._load_metadata()
+        return metadata.get('last_update')

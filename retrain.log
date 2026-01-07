@@ -1,0 +1,100 @@
+2026-01-07 08:16:17 - INFO - ======================================================================
+2026-01-07 08:16:17 - INFO - UNIFIED UPDATE PROCESS
+2026-01-07 08:16:17 - INFO - ======================================================================
+2026-01-07 08:16:17 - INFO - 
+Step 1: Historical Data
+2026-01-07 08:16:17 - INFO - Missing data for years: {2025}
+2026-01-07 08:16:17 - INFO - Checking historical data availability...
+2026-01-07 08:16:17 - INFO - Missing historical data - ATP: [2025], WTA: [2025]
+2026-01-07 08:16:17 - INFO - Downloading from Jeff Sackmann repository...
+2026-01-07 08:16:17 - INFO - Downloading historical data for years: [2020, 2021, 2022, 2023, 2024, 2025]
+2026-01-07 08:16:17 - INFO - ✓ Historical data download completed
+2026-01-07 08:16:17 - INFO - 
+Step 2: Recent Data (Last 7 Days)
+2026-01-07 08:16:17 - INFO - Downloading recent matches from SofaScore (last 7 days)...
+2026-01-07 08:16:17 - INFO - Loaded 803 existing matches from /Users/nmartorana/dev/playground/tennis_predictions/data/atp/atp_matches_2026.csv
+2026-01-07 08:16:17 - INFO - Fetching matches from SofaScore for 2026-01-07
+2026-01-07 08:16:17 - INFO - Found 205 matches for 2026-01-07 (tour=atp)
+2026-01-07 08:16:18 - INFO - Fetching matches from SofaScore for 2026-01-06
+2026-01-07 08:16:18 - INFO - Found 387 matches for 2026-01-06 (tour=atp)
+2026-01-07 08:16:19 - INFO - Fetching matches from SofaScore for 2026-01-05
+2026-01-07 08:16:19 - INFO - Found 364 matches for 2026-01-05 (tour=atp)
+2026-01-07 08:16:19 - INFO - Fetching matches from SofaScore for 2026-01-04
+2026-01-07 08:16:19 - INFO - Found 296 matches for 2026-01-04 (tour=atp)
+2026-01-07 08:16:20 - INFO - Fetching matches from SofaScore for 2026-01-03
+2026-01-07 08:16:20 - INFO - Found 220 matches for 2026-01-03 (tour=atp)
+2026-01-07 08:16:20 - INFO - Fetching matches from SofaScore for 2026-01-02
+2026-01-07 08:16:20 - INFO - Found 150 matches for 2026-01-02 (tour=atp)
+2026-01-07 08:16:21 - INFO - Fetching matches from SofaScore for 2026-01-01
+2026-01-07 08:16:21 - INFO - Found 124 matches for 2026-01-01 (tour=atp)
+2026-01-07 08:16:21 - INFO - Removed 1609 duplicate matches
+2026-01-07 08:16:21 - INFO - Net new matches: 137
+2026-01-07 08:16:21 - INFO - Saved 940 matches to /Users/nmartorana/dev/playground/tennis_predictions/data/atp/atp_matches_2026.csv
+2026-01-07 08:16:21 - INFO - Added 137 new matches to /Users/nmartorana/dev/playground/tennis_predictions/data/atp/atp_matches_2026.csv
+2026-01-07 08:16:21 - INFO - ✓ Added 137 new ATP matches
+2026-01-07 08:16:21 - INFO - Loaded 527 existing matches from /Users/nmartorana/dev/playground/tennis_predictions/data/wta/wta_matches_2026.csv
+2026-01-07 08:16:21 - INFO - Fetching matches from SofaScore for 2026-01-07
+2026-01-07 08:16:21 - INFO - Found 101 matches for 2026-01-07 (tour=wta)
+2026-01-07 08:16:22 - INFO - Fetching matches from SofaScore for 2026-01-06
+2026-01-07 08:16:22 - INFO - Found 190 matches for 2026-01-06 (tour=wta)
+2026-01-07 08:16:23 - INFO - Fetching matches from SofaScore for 2026-01-05
+2026-01-07 08:16:23 - INFO - Found 178 matches for 2026-01-05 (tour=wta)
+2026-01-07 08:16:23 - INFO - Fetching matches from SofaScore for 2026-01-04
+2026-01-07 08:16:23 - INFO - Found 134 matches for 2026-01-04 (tour=wta)
+2026-01-07 08:16:24 - INFO - Fetching matches from SofaScore for 2026-01-03
+2026-01-07 08:16:24 - INFO - Found 131 matches for 2026-01-03 (tour=wta)
+2026-01-07 08:16:24 - INFO - Fetching matches from SofaScore for 2026-01-02
+2026-01-07 08:16:24 - INFO - Found 137 matches for 2026-01-02 (tour=wta)
+2026-01-07 08:16:25 - INFO - Fetching matches from SofaScore for 2026-01-01
+2026-01-07 08:16:25 - INFO - Found 132 matches for 2026-01-01 (tour=wta)
+2026-01-07 08:16:25 - INFO - Removed 947 duplicate matches
+2026-01-07 08:16:25 - INFO - Net new matches: 56
+2026-01-07 08:16:25 - INFO - Saved 583 matches to /Users/nmartorana/dev/playground/tennis_predictions/data/wta/wta_matches_2026.csv
+2026-01-07 08:16:25 - INFO - Added 56 new matches to /Users/nmartorana/dev/playground/tennis_predictions/data/wta/wta_matches_2026.csv
+2026-01-07 08:16:25 - INFO - ✓ Added 56 new WTA matches
+2026-01-07 08:16:25 - INFO - ✓ Total new matches: 193
+2026-01-07 08:16:25 - INFO - 
+Step 3: Update Model
+2026-01-07 08:16:25 - ERROR - Invalid JSON in ratings file data/ratings.json: Expecting ',' delimiter: line 1036 column 33 (char 24594)
+2026-01-07 08:16:25 - ERROR - Unified update failed: Invalid JSON format in data/ratings.json
+Traceback (most recent call last):
+  File "/Users/nmartorana/dev/playground/tennis_predictions/src/infrastructure/repositories.py", line 51, in load
+    return json.loads(content)
+           ~~~~~~~~~~^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.6/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ~~~~~~~~~~~~~~~~~~~~~~~^^^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.6/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/decoder.py", line 345, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.13/3.13.6/Frameworks/Python.framework/Versions/3.13/lib/python3.13/json/decoder.py", line 361, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ~~~~~~~~~~~~~~^^^^^^^^
+json.decoder.JSONDecodeError: Expecting ',' delimiter: line 1036 column 33 (char 24594)
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/nmartorana/dev/playground/tennis_predictions/src/scripts/unified_update.py", line 264, in run_unified_update
+    total_players = train_model(force_full=force_full_retrain)
+  File "/Users/nmartorana/dev/playground/tennis_predictions/src/scripts/unified_update.py", line 163, in train_model
+    rating_service = container.rating_service()
+  File "/Users/nmartorana/dev/playground/tennis_predictions/src/services/dependency_container.py", line 146, in rating_service
+    rating_system=self.rating_system(),
+                  ~~~~~~~~~~~~~~~~~~^^
+  File "/Users/nmartorana/dev/playground/tennis_predictions/src/services/dependency_container.py", line 135, in rating_system
+    self._rating_system = TennisEloRatingSystem(
+                          ~~~~~~~~~~~~~~~~~~~~~^
+        repository=self.rating_repository(),
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        surface_advantage=self.surface_advantage,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        k_factor=self.k_factor
+        ^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/nmartorana/dev/playground/tennis_predictions/src/prediction/elo_rating_system.py", line 58, in __init__
+    ratings_data = self.repository.load()
+  File "/Users/nmartorana/dev/playground/tennis_predictions/src/infrastructure/repositories.py", line 54, in load
+    raise RepositoryError(f"Invalid JSON format in {self.file_path}") from e
+src.core.exceptions.RepositoryError: Invalid JSON format in data/ratings.json
