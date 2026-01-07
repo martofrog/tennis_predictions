@@ -4,6 +4,8 @@ fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 pydantic>=2.0.0
 apscheduler>=3.10.0
+openpyxl>=3.1.0  # Required for reading Excel files from tennis-data.co.uk
+beautifulsoup4>=4.12.0  # Optional: for HTML parsing if needed
 
 # Testing
 pytest>=7.4.0

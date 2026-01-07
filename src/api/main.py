@@ -159,10 +159,11 @@ def train_model_at_startup():
         
         # Check if ratings exist
         ratings_exist = ratings_file.exists() and ratings_file.stat().st_size > 100
+        metadata_exists = metadata_file.exists()
         
         # Load metadata to get last update date
         last_update_date = None
-        if metadata_file.exists():
+        if metadata_exists:
             try:
                 with open(metadata_file, 'r') as f:
                     metadata = json.load(f)
@@ -172,6 +173,24 @@ def train_model_at_startup():
             except Exception as e:
                 logger.warning(f"Could not load metadata: {e}")
         
+        # If metadata is missing but ratings exist, this is an inconsistent state
+        # Delete ratings to force full retrain
+        if ratings_exist and not metadata_exists:
+            logger.warning("⚠️  Ratings file exists but metadata is missing - this is inconsistent!")
+            logger.warning("🗑️  Deleting ratings.json to force full retrain...")
+            try:
+                ratings_file.unlink()
+                ratings_exist = False
+                logger.info("✓ Ratings file deleted successfully")
+                
+                # Reset the global container to ensure fresh initialization
+                # This is critical because the rating system loads ratings in __init__
+                from src.services.dependency_container import reset_container
+                reset_container()
+                logger.info("✓ Container reset - will reinitialize with empty ratings")
+            except Exception as e:
+                logger.error(f"Failed to delete ratings file: {e}")
+        
         if ratings_exist and last_update_date:
             logger.info(f"📊 Ratings found - Last updated: {last_update_date.strftime('%Y-%m-%d %H:%M')}")
             logger.info("🔄 Running INCREMENTAL update (processing new matches only)...")
@@ -179,7 +198,9 @@ def train_model_at_startup():
             logger.info("📊 No ratings found - Running FULL training from scratch...")
             last_update_date = None
         
-        # Get container
+        # Get container - this will load ratings from file if they exist
+        # IMPORTANT: We must get the container AFTER checking/deleting the ratings file
+        # because the rating system loads ratings in its __init__ method
         container = get_container()
         rating_system = container.rating_system()
         
@@ -342,7 +363,7 @@ def startup_event():
                             logger.info(f"  Missing: {tour.upper()} {year}")
                 
                 if missing_data:
-                    logger.info("📥 Downloading missing match data (with SofaScore fallback)...")
+                    logger.info("📥 Downloading missing match data (with tennis-data.co.uk fallback)...")
                     downloader = TennisDataDownloader(data_dir=str(data_dir))
                     
                     for tour, year in missing_data:
@@ -549,7 +570,7 @@ async def get_ratings():
 @app.get("/api/v2/matches/yesterday", response_model=List[MatchResultDTO], tags=["Matches"])
 async def get_yesterday_matches(tour: str = Query("atp", description="Tour (atp or wta)")):
     """
-    Get yesterday's match results from SofaScore.
+    Get yesterday's match results from local data files.
     
     Args:
         tour: Tournament tour ('atp' or 'wta')
@@ -558,94 +579,90 @@ async def get_yesterday_matches(tour: str = Query("atp", description="Tour (atp 
         List of match results
     """
     from datetime import datetime, timedelta
-    import requests
+    import pandas as pd
+    from pathlib import Path
     
     # Get yesterday's date
     yesterday = datetime.now() - timedelta(days=1)
     date_str = yesterday.strftime("%Y-%m-%d")
+    yesterday_date_int = int(yesterday.strftime("%Y%m%d"))
+    current_year = datetime.now().year
     
     try:
-        # Fetch from SofaScore
-        url = "https://www.sofascore.com/api/v1/sport/tennis/scheduled-events/" + date_str
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
+        # Load from local CSV files (already downloaded)
+        data_dir = project_root / "data" / tour.lower()
+        csv_file = data_dir / f"{tour.lower()}_matches_{current_year}.csv"
         
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-        data = response.json()
+        if not csv_file.exists():
+            # Try previous year if current year file doesn't exist
+            csv_file = data_dir / f"{tour.lower()}_matches_{current_year - 1}.csv"
         
+        if not csv_file.exists():
+            logger.warning(f"No data file found for {tour} {current_year}")
+            return []
+        
+        # Read CSV file
+        df = pd.read_csv(csv_file)
+        
+        # Filter for yesterday's matches
         matches = []
-        events = data.get("events", [])
         
-        # Build player-to-tour lookup from historical data
-        player_tour_lookup = _get_player_tour_lookup()
-        
-        for event in events:
+        for _, row in df.iterrows():
+            # Parse date from the row (tourney_date is in YYYYMMDD format)
+            date_val = row.get('tourney_date')
+            if pd.notna(date_val):
+                try:
+                    # Convert to int for comparison
+                    row_date_int = int(str(date_val))
+                    
+                    # Only include yesterday's matches
+                    if row_date_int != yesterday_date_int:
+                        continue
+                except (ValueError, TypeError):
+                    continue
+            else:
+                continue
+            
             # Get player names
-            player1_name = event.get("homeTeam", {}).get("name", "")
-            player2_name = event.get("awayTeam", {}).get("name", "")
+            winner_name = str(row.get('winner_name', '')).strip()
+            loser_name = str(row.get('loser_name', '')).strip()
             
-            # Skip doubles (names containing '/')
-            if '/' in player1_name or '/' in player2_name:
+            if not winner_name or not loser_name or winner_name == 'nan' or loser_name == 'nan':
                 continue
             
-            # Filter by tour using historical data lookup
-            player1_tour = player_tour_lookup.get(player1_name, "")
-            player2_tour = player_tour_lookup.get(player2_name, "")
-            
-            # Only include if both players are from the requested tour
-            if tour.lower() == "atp":
-                if player1_tour != "atp" or player2_tour != "atp":
-                    continue
-            elif tour.lower() == "wta":
-                if player1_tour != "wta" or player2_tour != "wta":
-                    continue
-            
-            # Get status
-            status_type = event.get("status", {}).get("type", "")
-            
-            # Only include finished matches
-            if status_type != "finished":
-                continue
-            
-            # Get scores
-            home_score = event.get("homeScore", {})
-            away_score = event.get("awayScore", {})
-            
-            # Parse set scores
-            player1_sets = []
-            player2_sets = []
-            
-            for i in range(1, 6):  # Up to 5 sets
-                p1_set = home_score.get(f"period{i}")
-                p2_set = away_score.get(f"period{i}")
+            # Parse score (format: "6-4 6-3" or similar)
+            score_str = str(row.get('score', ''))
+            if score_str and score_str != 'nan':
+                # Split score into sets
+                sets = score_str.split()
+                winner_sets = []
+                loser_sets = []
                 
-                if p1_set is not None and p2_set is not None:
-                    player1_sets.append(str(p1_set))
-                    player2_sets.append(str(p2_set))
-            
-            player1_score_str = " ".join(player1_sets) if player1_sets else None
-            player2_score_str = " ".join(player2_sets) if player2_sets else None
-            
-            # Determine winner
-            winner_code = event.get("winnerCode")
-            winner = player1_name if winner_code == 1 else player2_name if winner_code == 2 else None
+                for set_score in sets:
+                    if '-' in set_score:
+                        parts = set_score.split('-')
+                        if len(parts) == 2:
+                            winner_sets.append(parts[0])
+                            loser_sets.append(parts[1])
+                
+                winner_score_str = " ".join(winner_sets) if winner_sets else None
+                loser_score_str = " ".join(loser_sets) if loser_sets else None
+            else:
+                winner_score_str = None
+                loser_score_str = None
             
             # Get tournament info
-            tournament_name = event.get("tournament", {}).get("name", "")
-            surface_id = event.get("groundType", "")
-            surface_map = {"1": "Hard", "2": "Clay", "3": "Grass", "4": "Carpet"}
-            surface = surface_map.get(str(surface_id), "Hard")
+            tournament_name = str(row.get('tourney_name', ''))
+            surface = str(row.get('surface', 'Hard'))
+            round_info = str(row.get('round', ''))
             
-            round_info = event.get("roundInfo", {}).get("name", "")
-            
+            # Create match result
             matches.append(MatchResultDTO(
-                player1=player1_name,
-                player2=player2_name,
-                player1_score=player1_score_str,
-                player2_score=player2_score_str,
-                winner=winner,
+                player1=winner_name,
+                player2=loser_name,
+                player1_score=winner_score_str,
+                player2_score=loser_score_str,
+                winner=winner_name,
                 tournament=tournament_name,
                 surface=surface,
                 round=round_info,
@@ -655,11 +672,11 @@ async def get_yesterday_matches(tour: str = Query("atp", description="Tour (atp 
         
         return matches
         
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Failed to fetch yesterday's matches: {e}")
+    except FileNotFoundError as e:
+        logger.error(f"Match data file not found: {e}")
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Could not fetch match data: {str(e)}"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Match data not available for {tour} {current_year}"
         )
     except Exception as e:
         logger.error(f"Error processing yesterday's matches: {e}")
