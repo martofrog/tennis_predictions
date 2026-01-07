@@ -736,43 +736,53 @@
 
                 let html = '';
 
+                // Show based on selected tour
+                // If Men's selected: show only Men's
+                // If Women's selected: show only Women's
+                const showMens = currentTour === 'atp';
+                const showWomens = currentTour === 'wta';
+
                 // Men's Rankings Section
-                html += `
-                    <div class="rankings-section">
-                        <h2 class="rankings-title">Men's Rankings</h2>
-                        <div class="ratings-grid">
-                `;
-                
-                mensRatings.slice(0, 50).forEach((rating, index) => {
+                if (showMens) {
                     html += `
-                        <div class="rating-card">
-                            <div class="rank">#${index + 1}</div>
-                            <div class="player-name">${rating.player}</div>
-                            <div class="rating-value">${rating.rating.toFixed(1)}</div>
-                        </div>
+                        <div class="rankings-section">
+                            <h2 class="rankings-title">Men's Rankings</h2>
+                            <div class="ratings-grid">
                     `;
-                });
-                
-                html += '</div></div>';
+                    
+                    mensRatings.slice(0, 50).forEach((rating, index) => {
+                        html += `
+                            <div class="rating-card">
+                                <div class="rank">#${index + 1}</div>
+                                <div class="player-name">${rating.player}</div>
+                                <div class="rating-value">${rating.rating.toFixed(1)}</div>
+                            </div>
+                        `;
+                    });
+                    
+                    html += '</div></div>';
+                }
 
                 // Women's Rankings Section
-                html += `
-                    <div class="rankings-section">
-                        <h2 class="rankings-title">Women's Rankings</h2>
-                        <div class="ratings-grid">
-                `;
-                
-                womensRatings.slice(0, 50).forEach((rating, index) => {
+                if (showWomens) {
                     html += `
-                        <div class="rating-card">
-                            <div class="rank">#${index + 1}</div>
-                            <div class="player-name">${rating.player}</div>
-                            <div class="rating-value">${rating.rating.toFixed(1)}</div>
-                        </div>
+                        <div class="rankings-section">
+                            <h2 class="rankings-title">Women's Rankings</h2>
+                            <div class="ratings-grid">
                     `;
-                });
-                
-                html += '</div></div>';
+                    
+                    womensRatings.slice(0, 50).forEach((rating, index) => {
+                        html += `
+                            <div class="rating-card">
+                                <div class="rank">#${index + 1}</div>
+                                <div class="player-name">${rating.player}</div>
+                                <div class="rating-value">${rating.rating.toFixed(1)}</div>
+                            </div>
+                        `;
+                    });
+                    
+                    html += '</div></div>';
+                }
 
                 content.innerHTML = html;
             } catch (error) {
