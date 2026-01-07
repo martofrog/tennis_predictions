@@ -172,3 +172,5 @@ If you encounter issues with the hooks:
 
 **Remember:** These hooks are your friends, not obstacles. They catch issues early and keep the codebase secure! 🛡️
 
+
+
