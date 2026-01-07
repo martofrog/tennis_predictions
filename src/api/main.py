@@ -454,6 +454,7 @@ class HealthResponseDTO(BaseModel):
     """Health check response."""
     status: str
     timestamp: str
+    service: str
     api_key_configured: bool
     ratings_loaded: bool
     architecture: str
@@ -531,6 +532,7 @@ async def health_check():
     return HealthResponseDTO(
         status="healthy",
         timestamp=datetime.now().isoformat(),
+        service="tennis-predictions",
         api_key_configured=bool(api_key),
         ratings_loaded=rating_service.ratings_exist(),
         architecture="SOLID"
@@ -628,6 +630,10 @@ async def get_yesterday_matches(tour: str = Query("atp", description="Tour (atp 
             loser_name = str(row.get('loser_name', '')).strip()
             
             if not winner_name or not loser_name or winner_name == 'nan' or loser_name == 'nan':
+                continue
+            
+            # Skip doubles matches (names containing '/')
+            if '/' in winner_name or '/' in loser_name:
                 continue
             
             # Parse score (format: "6-4 6-3" or similar)
