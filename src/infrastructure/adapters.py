@@ -20,7 +20,7 @@ from src.core.constants import (
     OddsFormat,
     Region
 )
-from src.core.exceptions import OddsProviderError, ConfigurationError
+from src.core.exceptions import OddsProviderError, ConfigurationError, MatchResultsProviderError
 
 logger = logging.getLogger(__name__)
 
@@ -476,7 +476,10 @@ class ApiTennisAdapter(IMatchResultsProvider):
 
     def get_results_by_date(self, date: datetime, tour: str) -> List[Dict[str, Any]]:
         """
-        Fetch results for a specific date and tour.
+        Fetch results for a specific date and tour using get_fixtures method.
+        
+        According to API-Tennis.com documentation, get_fixtures returns matches
+        for a date range. Completed matches have event_final_result populated.
         
         Args:
             date: Date to fetch results for
@@ -484,20 +487,47 @@ class ApiTennisAdapter(IMatchResultsProvider):
             
         Returns:
             List of match dictionaries in Jeff Sackmann format
+            
+        Raises:
+            MatchResultsProviderError: If the API request fails or returns an error
         """
         date_str = date.strftime("%Y-%m-%d")
+        
+        # Event type keys from API-Tennis.com documentation:
+        # 265 = ATP Singles
+        # 266 = WTA Singles
+        event_type_key = "265" if tour.lower() == "atp" else "266"
+        
         params = {
-            "method": "get_results",
+            "method": "get_fixtures",  # Use get_fixtures instead of get_results
             "APIkey": self.api_key,
             "date_start": date_str,
-            "date_stop": date_str
+            "date_stop": date_str,
+            "event_type_key": event_type_key  # Filter by tour type
         }
         
         try:
-            logger.info(f"Fetching {tour.upper()} results for {date_str} from API-Tennis...")
+            logger.info(f"Fetching {tour.upper()} results for {date_str} from API-Tennis (get_fixtures)...")
             response = requests.get(self.BASE_URL, params=params, timeout=DEFAULT_REQUEST_TIMEOUT)
-            response.raise_for_status()
+            
+            # Check for HTTP errors
+            if response.status_code != 200:
+                error_msg = f"API-Tennis returned status {response.status_code}"
+                if response.text:
+                    error_msg += f": {response.text[:200]}"
+                raise MatchResultsProviderError(error_msg)
+            
             data = response.json()
+            
+            # Check for success field (per API-Tennis.com documentation)
+            if isinstance(data, dict) and data.get("success") != 1:
+                error_msg = data.get("error", "API request was not successful")
+                raise MatchResultsProviderError(f"API-Tennis error: {error_msg}")
+            
+            # Check for API-level errors
+            if isinstance(data, dict) and "error" in data and data.get("success") != 1:
+                error_msg = data.get("error", "Unknown API error")
+                raise MatchResultsProviderError(f"API-Tennis error: {error_msg}")
             
             if "result" not in data:
                 logger.warning(f"No results found in API response for {date_str}")
@@ -507,13 +537,17 @@ class ApiTennisAdapter(IMatchResultsProvider):
             matches = []
             
             for res in results:
-                # Filter by tour if possible
-                # API-Tennis returns all matches, so we might need to filter by tournament name
-                tourney_name = res.get("tournament_name", "")
-                if tour.lower() == "atp" and "WTA" in tourney_name:
-                    continue
-                if tour.lower() == "wta" and "ATP" in tourney_name:
-                    continue
+                # Filter for completed matches only
+                # get_fixtures returns both upcoming and completed matches
+                # Completed matches have event_final_result populated (not "-" or empty)
+                final_result = res.get("event_final_result", "")
+                if final_result == "-" or not final_result or final_result.strip() == "":
+                    continue  # Skip incomplete/upcoming matches
+                
+                # Additional check: ensure event_winner is set for completed matches
+                event_winner = res.get("event_winner")
+                if not event_winner:
+                    continue  # Skip if no winner determined
                 
                 match = self._transform_to_sackmann_format(res, date, tour)
                 if match:
@@ -521,31 +555,103 @@ class ApiTennisAdapter(IMatchResultsProvider):
                     
             return matches
             
+        except MatchResultsProviderError:
+            # Re-raise our custom exceptions
+            raise
+        except requests.exceptions.RequestException as e:
+            error_msg = f"Network error connecting to API-Tennis: {e}"
+            logger.error(error_msg)
+            raise MatchResultsProviderError(error_msg) from e
         except Exception as e:
-            logger.error(f"Failed to fetch results from API-Tennis: {e}")
-            return []
+            error_msg = f"Unexpected error fetching results from API-Tennis: {e}"
+            logger.error(error_msg)
+            raise MatchResultsProviderError(error_msg) from e
 
     def _transform_to_sackmann_format(self, res: Dict[str, Any], date: datetime, tour: str) -> Optional[Dict[str, Any]]:
-        """Transform API-Tennis result to Jeff Sackmann format."""
+        """
+        Transform API-Tennis get_fixtures result to Jeff Sackmann format.
+        
+        get_fixtures uses different field names:
+        - event_first_player / event_second_player (instead of event_winner_team)
+        - event_winner (contains winner name or "First Player"/"Second Player")
+        - event_final_result (score)
+        """
         try:
-            winner_name = res.get("event_winner_team")
-            home_team = res.get("event_home_team")
-            away_team = res.get("event_away_team")
+            # get_fixtures response structure
+            first_player = res.get("event_first_player")
+            second_player = res.get("event_second_player")
+            event_winner = res.get("event_winner")
             
-            if not winner_name or not home_team or not away_team:
+            if not first_player or not second_player:
                 return None
+            
+            # Determine winner and loser
+            # event_winner can be:
+            # - Player name (string)
+            # - "First Player" or "Second Player"
+            # - first_player_key or second_player_key (numeric)
+            winner_name = None
+            loser_name = None
+            
+            if event_winner:
+                # Check if event_winner is a player name
+                if event_winner == first_player or event_winner == res.get("first_player_key"):
+                    winner_name = first_player
+                    loser_name = second_player
+                elif event_winner == second_player or event_winner == res.get("second_player_key"):
+                    winner_name = second_player
+                    loser_name = first_player
+                elif event_winner == "First Player" or str(event_winner) == str(res.get("first_player_key", "")):
+                    winner_name = first_player
+                    loser_name = second_player
+                elif event_winner == "Second Player" or str(event_winner) == str(res.get("second_player_key", "")):
+                    winner_name = second_player
+                    loser_name = first_player
+                else:
+                    # event_winner might be the actual player name
+                    if event_winner in [first_player, second_player]:
+                        winner_name = event_winner
+                        loser_name = second_player if event_winner == first_player else first_player
+            
+            # Fallback: if we can't determine winner, skip this match
+            if not winner_name or not loser_name:
+                logger.debug(f"Could not determine winner/loser from event_winner: {event_winner}")
+                return None
+            
+            # Score parsing - use detailed set scores if available
+            # scores format: [{'score_first': '4', 'score_second': '6', 'score_set': '1'}, ...]
+            # score_first/second are from first_player/second_player perspective
+            # We need to convert to winner/loser perspective
+            scores_data = res.get("scores", [])
+            if scores_data and isinstance(scores_data, list) and len(scores_data) > 0:
+                # Determine if winner is first or second player
+                is_first_player_winner = (winner_name == first_player)
                 
-            if winner_name == home_team:
-                loser_name = away_team
+                # Build score string from winner's perspective
+                set_scores = []
+                for set_data in sorted(scores_data, key=lambda x: int(x.get('score_set', 0))):
+                    score_first = set_data.get('score_first', '0')
+                    score_second = set_data.get('score_second', '0')
+                    
+                    if is_first_player_winner:
+                        # Winner is first player: score is from first player's perspective
+                        set_scores.append(f"{score_first}-{score_second}")
+                    else:
+                        # Winner is second player: swap to show from winner's perspective
+                        set_scores.append(f"{score_second}-{score_first}")
+                
+                score = " ".join(set_scores) if set_scores else res.get("event_final_result", "")
             else:
-                loser_name = home_team
-                
-            # Score parsing (API-Tennis returns "2 - 0" or similar)
-            score = res.get("event_final_result", "")
+                # Fallback to event_final_result if scores not available
+                score = res.get("event_final_result", "")
+            
+            # Tournament info
+            tournament_name = res.get("tournament_name", "Unknown")
+            round_name = res.get("tournament_round", "")
             
             return {
-                "tourney_id": f"API-{date.year}-{res.get('tournament_name', '')[:20].replace(' ', '')}",
-                "tourney_name": res.get("tournament_name", "Unknown"),
+                "tourney_id": f"API-{date.year}-{tournament_name[:20].replace(' ', '')}",
+                "tourney_name": tournament_name,
                 "surface": "Hard",  # API-Tennis often doesn't provide surface, default to Hard
                 "draw_size": "",
                 "tourney_level": "",
@@ -573,7 +679,7 @@ class ApiTennisAdapter(IMatchResultsProvider):
                 "loser_rank_points": "",
                 "score": score,
                 "best_of": 3,
-                "round": "",
+                "round": round_name,
                 "minutes": "",
                 "w_ace": "",
                 "w_df": "",
@@ -594,5 +700,102 @@ class ApiTennisAdapter(IMatchResultsProvider):
                 "l_bpSaved": "",
                 "l_bpFaced": "",
             }
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Error transforming API-Tennis result: {e}")
             return None
+
+
+class FallbackMatchResultsProvider(IMatchResultsProvider):
+    """
+    Fallback match results provider that tries multiple providers in sequence.
+    
+    Automatically switches to fallback providers if the primary fails.
+    """
+    
+    def __init__(
+        self,
+        primary_provider: IMatchResultsProvider,
+        fallback_providers: Optional[List[IMatchResultsProvider]] = None
+    ):
+        """
+        Initialize fallback provider.
+        
+        Args:
+            primary_provider: Primary provider (e.g., ApiTennisAdapter)
+            fallback_providers: List of fallback providers to try in order
+        """
+        self.primary_provider = primary_provider
+        self.fallback_providers = fallback_providers or []
+        self._last_used_provider = "primary"
+        self._provider_errors = []
+    
+    def get_results_by_date(self, date: datetime, tour: str) -> List[Dict[str, Any]]:
+        """
+        Get match results, trying providers in order until one succeeds.
+        
+        Args:
+            date: Date to fetch results for
+            tour: Tour type ('atp' or 'wta')
+            
+        Returns:
+            List of match dictionaries in Jeff Sackmann format
+            
+        Raises:
+            MatchResultsProviderError: If all providers fail
+        """
+        self._provider_errors = []
+        
+        # Try primary provider first
+        try:
+            logger.info(f"Attempting to fetch {tour.upper()} results for {date.strftime('%Y-%m-%d')} from primary provider...")
+            matches = self.primary_provider.get_results_by_date(date, tour)
+            
+            if matches:
+                self._last_used_provider = "primary"
+                logger.info(f"✓ Primary provider returned {len(matches)} matches")
+                return matches
+            else:
+                logger.info("Primary provider returned no matches, trying fallbacks...")
+                self._provider_errors.append("Primary provider returned empty results")
+                
+        except MatchResultsProviderError as e:
+            logger.warning(f"Primary provider failed: {e}")
+            self._provider_errors.append(f"Primary: {str(e)}")
+        except Exception as e:
+            logger.warning(f"Primary provider error: {e}")
+            self._provider_errors.append(f"Primary: {str(e)}")
+        
+        # Try fallback providers in order
+        for i, fallback in enumerate(self.fallback_providers):
+            try:
+                logger.info(f"Trying fallback provider {i+1}/{len(self.fallback_providers)}...")
+                matches = fallback.get_results_by_date(date, tour)
+                
+                if matches:
+                    self._last_used_provider = f"fallback_{i+1}"
+                    logger.info(f"✓ Fallback provider {i+1} returned {len(matches)} matches")
+                    return matches
+                else:
+                    logger.info(f"Fallback provider {i+1} returned no matches")
+                    self._provider_errors.append(f"Fallback {i+1}: returned empty results")
+                    
+            except MatchResultsProviderError as e:
+                logger.warning(f"Fallback provider {i+1} failed: {e}")
+                self._provider_errors.append(f"Fallback {i+1}: {str(e)}")
+            except Exception as e:
+                logger.warning(f"Fallback provider {i+1} error: {e}")
+                self._provider_errors.append(f"Fallback {i+1}: {str(e)}")
+        
+        # All providers failed
+        error_summary = "; ".join(self._provider_errors)
+        error_msg = f"All match results providers failed. Errors: {error_summary}"
+        logger.error(error_msg)
+        raise MatchResultsProviderError(error_msg)
+    
+    def get_last_used_provider(self) -> str:
+        """Return the name of the last successfully used provider."""
+        return self._last_used_provider
+    
+    def get_provider_errors(self) -> List[str]:
+        """Return list of errors from all attempted providers."""
+        return self._provider_errors.copy()

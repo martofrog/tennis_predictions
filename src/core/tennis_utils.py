@@ -6,8 +6,14 @@ and common operations to eliminate code duplication.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Tuple, TYPE_CHECKING, Dict, Any
 import pandas as pd
+import logging
+
+if TYPE_CHECKING:
+    from src.api.main import MatchResultDTO
+
+logger = logging.getLogger(__name__)
 
 
 def get_current_tennis_year() -> int:
@@ -162,4 +168,125 @@ def calculate_sets_score(score_str: Optional[str]) -> Optional[dict]:
             'total_sets': len(sets)
         }
     except Exception:
+        return None
+
+
+def parse_tennis_score(score_str: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Parse tennis score string to extract player scores.
+    
+    Handles multiple score formats:
+    - API-Tennis format: "2 - 0" (sets won)
+    - Detailed format: "6-4 6-3" (set scores)
+    - Edge cases: retirements, walkovers, tiebreaks
+    
+    Args:
+        score_str: Score string from data
+        
+    Returns:
+        Tuple of (player1_score, player2_score) or (None, None) if parsing fails
+    """
+    if not score_str or str(score_str).strip() == '' or str(score_str) == 'nan':
+        return None, None
+    
+    score_str = str(score_str).strip()
+    
+    # Handle API-Tennis format: "2 - 0" (sets won)
+    if ' - ' in score_str:
+        parts = score_str.split(' - ')
+        if len(parts) == 2:
+            try:
+                # This is sets format, convert to set scores format
+                sets_won = int(parts[0].strip())
+                sets_lost = int(parts[1].strip())
+                # Return as "2 0" format (simplified)
+                return str(sets_won), str(sets_lost)
+            except ValueError:
+                pass
+    
+    # Handle detailed format: "6-4 6-3" or "6-4 4-6 6-2"
+    if '-' in score_str and ' ' in score_str:
+        sets = score_str.split()
+        player1_sets = []
+        player2_sets = []
+        
+        for set_score in sets:
+            if '-' in set_score:
+                parts = set_score.split('-')
+                if len(parts) == 2:
+                    try:
+                        p1_games = int(parts[0])
+                        p2_games = int(parts[1])
+                        player1_sets.append(str(p1_games))
+                        player2_sets.append(str(p2_games))
+                    except ValueError:
+                        continue
+        
+        if player1_sets and player2_sets:
+            return " ".join(player1_sets), " ".join(player2_sets)
+    
+    # Handle single set format: "6-4"
+    if '-' in score_str and ' ' not in score_str:
+        parts = score_str.split('-')
+        if len(parts) == 2:
+            try:
+                p1_games = int(parts[0])
+                p2_games = int(parts[1])
+                return str(p1_games), str(p2_games)
+            except ValueError:
+                pass
+    
+    # If we can't parse, return None
+    logger.debug(f"Could not parse score format: {score_str}")
+    return None, None
+
+
+def transform_csv_row_to_dto(row: pd.Series, date_str: str, tour: str) -> Optional[Dict[str, Any]]:
+    """
+    Transform a CSV row to dictionary matching MatchResultDTO format.
+    
+    Args:
+        row: pandas Series representing a CSV row
+        date_str: Date string in YYYY-MM-DD format
+        tour: Tour type ('atp' or 'wta')
+        
+    Returns:
+        Dictionary with MatchResultDTO fields if valid, None otherwise
+    """
+    try:
+        # Get player names
+        winner_name = str(row.get('winner_name', '')).strip()
+        loser_name = str(row.get('loser_name', '')).strip()
+        
+        # Validate player names
+        if not winner_name or not loser_name or winner_name == 'nan' or loser_name == 'nan':
+            return None
+        
+        # Skip doubles matches (names containing '/')
+        if '/' in winner_name or '/' in loser_name:
+            return None
+        
+        # Parse score
+        score_str = str(row.get('score', ''))
+        player1_score, player2_score = parse_tennis_score(score_str)
+        
+        # Get tournament info
+        tournament_name = str(row.get('tourney_name', ''))
+        surface = str(row.get('surface', 'Hard'))
+        round_info = str(row.get('round', ''))
+        
+        return {
+            'player1': winner_name,
+            'player2': loser_name,
+            'player1_score': player1_score,
+            'player2_score': player2_score,
+            'winner': winner_name,
+            'tournament': tournament_name if tournament_name != 'nan' else None,
+            'surface': surface if surface != 'nan' else 'Hard',
+            'round': round_info if round_info != 'nan' else None,
+            'date': date_str,
+            'tour': tour.lower()
+        }
+    except Exception as e:
+        logger.debug(f"Error transforming CSV row to DTO: {e}")
         return None

@@ -152,6 +152,47 @@ class TestMatchResultsEndpoint:
             for match in data:
                 assert "/" not in match["player1"]
                 assert "/" not in match["player2"]
+    
+    def test_get_latest_matches(self, client):
+        """Test getting latest matches for last N days."""
+        response = client.get("/api/v2/matches/latest?days=1")
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert isinstance(data, list)
+        
+        if len(data) > 0:
+            match = data[0]
+            assert "player1" in match
+            assert "player2" in match
+            assert "date" in match
+            assert "tour" in match
+    
+    def test_get_latest_matches_multiple_days(self, client):
+        """Test getting latest matches for multiple days."""
+        response = client.get("/api/v2/matches/latest?days=3&tour=atp")
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert isinstance(data, list)
+        
+        # All matches should be ATP
+        for match in data:
+            assert match["tour"] == "atp"
+    
+    def test_get_latest_matches_max_days(self, client):
+        """Test that days parameter is limited to max 7."""
+        response = client.get("/api/v2/matches/latest?days=10")
+        
+        # Should return 422 for validation error
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    
+    def test_get_latest_matches_min_days(self, client):
+        """Test that days parameter must be at least 1."""
+        response = client.get("/api/v2/matches/latest?days=0")
+        
+        # Should return 422 for validation error
+        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
 
 
 class TestPredictionEndpoint:

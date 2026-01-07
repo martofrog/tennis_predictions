@@ -16,6 +16,7 @@ from typing import List, Dict, Optional, Any
 from contextlib import asynccontextmanager
 import os
 import logging
+import time
 
 # Add project root to path
 project_root = Path(__file__).resolve().parent.parent.parent
@@ -33,7 +34,8 @@ from apscheduler.triggers.cron import CronTrigger
 from src.services.dependency_container import get_container, reset_container
 from src.services.rating_service import RatingService
 from src.services.betting_service import BettingService
-from src.infrastructure.adapters import ApiTennisAdapter
+from src.infrastructure.adapters import ApiTennisAdapter, FallbackMatchResultsProvider
+from src.core.exceptions import MatchResultsProviderError
 from src.core.constants import (
     DEFAULT_MIN_EDGE,
     DEFAULT_RATINGS_FILE,
@@ -150,37 +152,65 @@ def update_match_data():
         yesterday = datetime.now() - timedelta(days=1)
         data_dir = project_root / "data"
         
-        # Step 1: Fetch yesterday's results from API-Tennis
-        logger.info(f"📥 Step 1/3: Fetching yesterday's results ({yesterday.strftime('%Y-%m-%d')}) from API-Tennis...")
+        # Step 1: Fetch yesterday's results using fallback provider system
+        logger.info(f"📥 Step 1/3: Fetching yesterday's results ({yesterday.strftime('%Y-%m-%d')})...")
         try:
+            # Create fallback provider with API-Tennis as primary
+            # Fallback providers can be added here as they become available
             api_tennis = ApiTennisAdapter()
+            results_provider = FallbackMatchResultsProvider(
+                primary_provider=api_tennis,
+                fallback_providers=[]  # Add fallback providers here when available
+            )
+            
             for tour in ['atp', 'wta']:
                 logger.info(f"  Fetching {tour.upper()} results...")
-                results = api_tennis.get_results_by_date(yesterday, tour)
-                
-                if results:
-                    new_df = pd.DataFrame(results)
-                    year_file = data_dir / tour / f"{tour}_matches_{current_year}.csv"
+                try:
+                    results = results_provider.get_results_by_date(yesterday, tour)
                     
-                    if year_file.exists():
-                        existing_df = pd.read_csv(year_file)
-                        combined = pd.concat([existing_df, new_df], ignore_index=True)
-                        # Deduplicate by date and player names
-                        combined = combined.drop_duplicates(
-                            subset=['tourney_date', 'winner_name', 'loser_name'],
-                            keep='last'
-                        )
-                        combined = combined.sort_values('tourney_date')
-                        combined.to_csv(year_file, index=False)
-                        logger.info(f"  ✓ {tour.upper()} yesterday updated ({len(new_df)} new matches, {len(combined)} total)")
+                    if results:
+                        new_df = pd.DataFrame(results)
+                        year_file = data_dir / tour / f"{tour}_matches_{current_year}.csv"
+                        
+                        if year_file.exists():
+                            existing_df = pd.read_csv(year_file)
+                            combined = pd.concat([existing_df, new_df], ignore_index=True)
+                            # Deduplicate by date and player names
+                            combined = combined.drop_duplicates(
+                                subset=['tourney_date', 'winner_name', 'loser_name'],
+                                keep='last'
+                            )
+                            # Ensure tourney_date is numeric for sorting
+                            combined['tourney_date'] = pd.to_numeric(combined['tourney_date'], errors='coerce')
+                            combined = combined.sort_values('tourney_date')
+                            combined.to_csv(year_file, index=False)
+                            
+                            # Validate CSV was written successfully
+                            if year_file.exists() and year_file.stat().st_size > 0:
+                                logger.info(f"  ✓ {tour.upper()} yesterday updated ({len(new_df)} new matches, {len(combined)} total) [Provider: {results_provider.get_last_used_provider()}]")
+                            else:
+                                logger.error(f"  ✗ {tour.upper()} CSV file was not written successfully")
+                        else:
+                            year_file.parent.mkdir(parents=True, exist_ok=True)
+                            new_df.to_csv(year_file, index=False)
+                            
+                            # Validate CSV was written successfully
+                            if year_file.exists() and year_file.stat().st_size > 0:
+                                logger.info(f"  ✓ {tour.upper()} yesterday created ({len(new_df)} matches) [Provider: {results_provider.get_last_used_provider()}]")
+                            else:
+                                logger.error(f"  ✗ {tour.upper()} CSV file was not created successfully")
                     else:
-                        year_file.parent.mkdir(parents=True, exist_ok=True)
-                        new_df.to_csv(year_file, index=False)
-                        logger.info(f"  ✓ {tour.upper()} yesterday created ({len(new_df)} matches)")
-                else:
-                    logger.info(f"  ℹ️  No {tour.upper()} results found for yesterday")
+                        logger.info(f"  ℹ️  No {tour.upper()} results found for yesterday")
+                        
+                except MatchResultsProviderError as e:
+                    logger.warning(f"  ⚠️  Failed to fetch {tour.upper()} results: {e}")
+                    # Log provider errors for debugging
+                    errors = results_provider.get_provider_errors()
+                    if errors:
+                        logger.debug(f"  Provider errors: {'; '.join(errors)}")
+                        
         except Exception as e:
-            logger.warning(f"  ⚠️  Failed to fetch results from API-Tennis: {e}")
+            logger.warning(f"  ⚠️  Unexpected error fetching results: {e}")
 
         # Step 2: Download recent years (current year + previous year) from tennis-data.co.uk
         # This ensures we get updates even if tennis-data.co.uk updates weekly
@@ -214,6 +244,8 @@ def update_match_data():
                                 subset=['tourney_date', 'winner_name', 'loser_name'],
                                 keep='last'
                             )
+                            # Ensure tourney_date is numeric for sorting
+                            combined['tourney_date'] = pd.to_numeric(combined['tourney_date'], errors='coerce')
                             combined = combined.sort_values('tourney_date')
                             combined.to_csv(year_file, index=False)
                             logger.info(f"  ✓ {tour.upper()} {year} updated ({len(combined)} total matches)")
@@ -445,6 +477,133 @@ def train_model_at_startup():
         traceback.print_exc()
 
 
+def fetch_missing_dates_for_year(year: int, tour: str, data_dir: Path) -> None:
+    """
+    Fetch missing dates for a given year and tour using API-Tennis.com.
+    
+    Includes rate limiting to avoid overwhelming the API.
+    
+    Args:
+        year: Year to check (e.g., 2026)
+        tour: Tour type ('atp' or 'wta')
+        data_dir: Data directory path
+    """
+    from datetime import datetime, timedelta
+    import pandas as pd
+    from src.infrastructure.adapters import ApiTennisAdapter, FallbackMatchResultsProvider
+    from src.core.exceptions import MatchResultsProviderError
+    
+    # Rate limiting: delay between API calls (in seconds)
+    # API-Tennis.com likely has rate limits, so be conservative
+    RATE_LIMIT_DELAY = float(os.getenv("API_TENNIS_RATE_LIMIT_DELAY", "0.5"))  # 0.5 seconds = 2 requests/second
+    
+    year_file = data_dir / tour / f"{tour}_matches_{year}.csv"
+    
+    # Get existing dates if file exists
+    existing_dates = set()
+    if year_file.exists():
+        try:
+            df = pd.read_csv(year_file)
+            if 'tourney_date' in df.columns and not df.empty:
+                df['tourney_date'] = pd.to_numeric(df['tourney_date'], errors='coerce')
+                existing_dates = set(df['tourney_date'].dropna().astype(int))
+        except Exception as e:
+            logger.warning(f"  ⚠️  Error reading existing {tour.upper()} {year} file: {e}")
+    
+    # Calculate date range: Jan 1 of year to yesterday
+    start_date = datetime(year, 1, 1)
+    end_date = datetime.now() - timedelta(days=1)  # Yesterday
+    
+    # Generate list of dates to check
+    dates_to_fetch = []
+    current = start_date
+    while current <= end_date:
+        date_int = int(current.strftime('%Y%m%d'))
+        if date_int not in existing_dates:
+            dates_to_fetch.append(current)
+        current += timedelta(days=1)
+    
+    if not dates_to_fetch:
+        logger.info(f"  ✓ {tour.upper()} {year}: No missing dates (all dates from Jan 1 to yesterday are present)")
+        return
+    
+    logger.info(f"  📥 {tour.upper()} {year}: Fetching {len(dates_to_fetch)} missing dates (rate limit: {RATE_LIMIT_DELAY}s between calls)...")
+    
+    # Initialize API adapter
+    try:
+        api_tennis = ApiTennisAdapter()
+        results_provider = FallbackMatchResultsProvider(
+            primary_provider=api_tennis,
+            fallback_providers=[]
+        )
+    except Exception as e:
+        logger.warning(f"  ⚠️  Failed to initialize API adapter for {tour.upper()} {year}: {e}")
+        return
+    
+    # Fetch data for each missing date with rate limiting
+    all_new_results = []
+    successful_dates = 0
+    failed_dates = 0
+    start_time = time.time()
+    
+    for i, date in enumerate(dates_to_fetch):
+        try:
+            # Rate limiting: wait before each request (except the first one)
+            if i > 0:
+                time.sleep(RATE_LIMIT_DELAY)
+            
+            results = results_provider.get_results_by_date(date, tour)
+            if results:
+                all_new_results.extend(results)
+                successful_dates += 1
+                if successful_dates % 10 == 0:
+                    elapsed = time.time() - start_time
+                    remaining = len(dates_to_fetch) - (i + 1)
+                    estimated_time = (remaining * RATE_LIMIT_DELAY) / 60  # minutes
+                    logger.info(f"    Progress: {successful_dates}/{len(dates_to_fetch)} dates fetched ({elapsed:.1f}s elapsed, ~{estimated_time:.1f}min remaining)...")
+        except MatchResultsProviderError as e:
+            failed_dates += 1
+            logger.debug(f"    ⚠️  Failed to fetch {date.strftime('%Y-%m-%d')}: {e}")
+            # Still wait even on failure to respect rate limits
+            if i < len(dates_to_fetch) - 1:
+                time.sleep(RATE_LIMIT_DELAY)
+        except Exception as e:
+            failed_dates += 1
+            logger.debug(f"    ⚠️  Error fetching {date.strftime('%Y-%m-%d')}: {e}")
+            # Still wait even on failure to respect rate limits
+            if i < len(dates_to_fetch) - 1:
+                time.sleep(RATE_LIMIT_DELAY)
+    
+    if all_new_results:
+        new_df = pd.DataFrame(all_new_results)
+        
+        # Merge with existing data
+        if year_file.exists():
+            existing_df = pd.read_csv(year_file)
+            combined = pd.concat([existing_df, new_df], ignore_index=True)
+        else:
+            combined = new_df
+            year_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Deduplicate and sort
+        combined = combined.drop_duplicates(
+            subset=['tourney_date', 'winner_name', 'loser_name'],
+            keep='last'
+        )
+        combined['tourney_date'] = pd.to_numeric(combined['tourney_date'], errors='coerce')
+        combined = combined.sort_values('tourney_date')
+        combined.to_csv(year_file, index=False)
+        
+        elapsed_total = time.time() - start_time
+        logger.info(f"  ✓ {tour.upper()} {year}: Added {len(new_df)} matches from {successful_dates} dates (took {elapsed_total:.1f}s)")
+        if failed_dates > 0:
+            logger.info(f"    ⚠️  {failed_dates} dates failed to fetch")
+    else:
+        logger.info(f"  ℹ️  {tour.upper()} {year}: No new matches found for missing dates")
+        if failed_dates > 0:
+            logger.warning(f"    ⚠️  All {failed_dates} dates failed to fetch")
+
+
 def startup_event():
     """Startup event - initialize scheduler, download data, and train model."""
     logger.info("🚀 Starting Tennis Predictions API...")
@@ -464,6 +623,71 @@ def startup_event():
         replace_existing=True
     )
     logger.info(f"✓ Scheduled daily update & training at {update_hour:02d}:{update_minute:02d}")
+    
+    # Fetch yesterday's results immediately at startup
+    try:
+        logger.info("📥 Fetching yesterday's match results at startup...")
+        from datetime import datetime, timedelta
+        import pandas as pd
+        from src.infrastructure.adapters import ApiTennisAdapter, FallbackMatchResultsProvider
+        from src.core.exceptions import MatchResultsProviderError
+        
+        current_year = datetime.now().year
+        yesterday = datetime.now() - timedelta(days=1)
+        data_dir = project_root / "data"
+        
+        api_tennis = ApiTennisAdapter()
+        results_provider = FallbackMatchResultsProvider(
+            primary_provider=api_tennis,
+            fallback_providers=[]
+        )
+        
+        for tour in ['atp', 'wta']:
+            try:
+                results = results_provider.get_results_by_date(yesterday, tour)
+                if results:
+                    new_df = pd.DataFrame(results)
+                    year_file = data_dir / tour / f"{tour}_matches_{current_year}.csv"
+                    
+                    if year_file.exists():
+                        existing_df = pd.read_csv(year_file)
+                        combined = pd.concat([existing_df, new_df], ignore_index=True)
+                        combined = combined.drop_duplicates(
+                            subset=['tourney_date', 'winner_name', 'loser_name'],
+                            keep='last'
+                        )
+                        # Ensure tourney_date is numeric for sorting
+                        combined['tourney_date'] = pd.to_numeric(combined['tourney_date'], errors='coerce')
+                        combined = combined.sort_values('tourney_date')
+                        combined.to_csv(year_file, index=False)
+                        logger.info(f"  ✓ {tour.upper()} startup update: {len(new_df)} new matches")
+                    else:
+                        year_file.parent.mkdir(parents=True, exist_ok=True)
+                        new_df.to_csv(year_file, index=False)
+                        logger.info(f"  ✓ {tour.upper()} startup: created file with {len(new_df)} matches")
+                else:
+                    logger.info(f"  ℹ️  No {tour.upper()} results found for yesterday")
+            except MatchResultsProviderError as e:
+                logger.warning(f"  ⚠️  Failed to fetch {tour.upper()} results at startup: {e}")
+            except Exception as e:
+                logger.warning(f"  ⚠️  Error fetching {tour.upper()} results at startup: {e}")
+    except Exception as e:
+        logger.warning(f"⚠️  Failed to fetch yesterday's results at startup: {e}")
+        logger.info("  Continuing startup - scheduled update will run at 6am")
+    
+    # Fetch missing dates for current year
+    try:
+        logger.info("📥 Checking for missing dates in current year...")
+        current_year = datetime.now().year
+        
+        for tour in ['atp', 'wta']:
+            try:
+                fetch_missing_dates_for_year(current_year, tour, project_root / "data")
+            except Exception as e:
+                logger.warning(f"  ⚠️  Failed to fetch missing dates for {tour.upper()} {current_year}: {e}")
+    except Exception as e:
+        logger.warning(f"⚠️  Failed to check for missing dates: {e}")
+        logger.info("  Continuing startup - scheduled update will run at 6am")
     
     # Ensure match data is downloaded if missing (can be disabled via env var)
     auto_download = os.getenv("AUTO_DOWNLOAD_MATCH_DATA", "true").lower() == "true"
@@ -726,17 +950,20 @@ async def get_ratings(
 @app.get("/api/v2/matches/yesterday", response_model=List[MatchResultDTO], tags=["Matches"])
 async def get_yesterday_matches(tour: str = Query("atp", description="Tour (atp or wta)")):
     """
-    Get yesterday's match results from local data files.
+    Get yesterday's match results from local CSV files.
+    
+    CSV files are updated daily at 6am via the scheduled update_match_data() function.
     
     Args:
         tour: Tournament tour ('atp' or 'wta')
         
     Returns:
-        List of match results
+        List of match results (empty list if no data available)
     """
     from datetime import datetime, timedelta
     import pandas as pd
     from pathlib import Path
+    from src.core.tennis_utils import transform_csv_row_to_dto
     
     # Get yesterday's date
     yesterday = datetime.now() - timedelta(days=1)
@@ -745,7 +972,7 @@ async def get_yesterday_matches(tour: str = Query("atp", description="Tour (atp 
     current_year = datetime.now().year
     
     try:
-        # Load from local CSV files (already downloaded)
+        # Load from local CSV files (updated daily at 6am)
         data_dir = project_root / "data" / tour.lower()
         csv_file = data_dir / f"{tour.lower()}_matches_{current_year}.csv"
         
@@ -754,13 +981,17 @@ async def get_yesterday_matches(tour: str = Query("atp", description="Tour (atp 
             csv_file = data_dir / f"{tour.lower()}_matches_{current_year - 1}.csv"
         
         if not csv_file.exists():
-            logger.warning(f"No data file found for {tour} {current_year}")
+            logger.info(f"No data file found for {tour} {current_year} - returning empty list")
             return []
         
         # Read CSV file
         df = pd.read_csv(csv_file)
         
-        # Filter for yesterday's matches
+        if df.empty:
+            logger.info(f"CSV file for {tour} {current_year} is empty - returning empty list")
+            return []
+        
+        # Filter for yesterday's matches and transform
         matches = []
         
         for _, row in df.iterrows():
@@ -779,71 +1010,114 @@ async def get_yesterday_matches(tour: str = Query("atp", description="Tour (atp 
             else:
                 continue
             
-            # Get player names
-            winner_name = str(row.get('winner_name', '')).strip()
-            loser_name = str(row.get('loser_name', '')).strip()
-            
-            if not winner_name or not loser_name or winner_name == 'nan' or loser_name == 'nan':
-                continue
-            
-            # Skip doubles matches (names containing '/')
-            if '/' in winner_name or '/' in loser_name:
-                continue
-            
-            # Parse score (format: "6-4 6-3" or similar)
-            score_str = str(row.get('score', ''))
-            if score_str and score_str != 'nan':
-                # Split score into sets
-                sets = score_str.split()
-                winner_sets = []
-                loser_sets = []
-                
-                for set_score in sets:
-                    if '-' in set_score:
-                        parts = set_score.split('-')
-                        if len(parts) == 2:
-                            winner_sets.append(parts[0])
-                            loser_sets.append(parts[1])
-                
-                winner_score_str = " ".join(winner_sets) if winner_sets else None
-                loser_score_str = " ".join(loser_sets) if loser_sets else None
-            else:
-                winner_score_str = None
-                loser_score_str = None
-            
-            # Get tournament info
-            tournament_name = str(row.get('tourney_name', ''))
-            surface = str(row.get('surface', 'Hard'))
-            round_info = str(row.get('round', ''))
-            
-            # Create match result
-            matches.append(MatchResultDTO(
-                player1=winner_name,
-                player2=loser_name,
-                player1_score=winner_score_str,
-                player2_score=loser_score_str,
-                winner=winner_name,
-                tournament=tournament_name,
-                surface=surface,
-                round=round_info,
-                date=date_str,
-                tour=tour.lower()
-            ))
+            # Transform CSV row to DTO using shared utility
+            match_dto = transform_csv_row_to_dto(row, date_str, tour)
+            if match_dto:
+                matches.append(MatchResultDTO(**match_dto))
         
+        logger.info(f"Returned {len(matches)} matches for {tour} on {date_str}")
         return matches
         
     except FileNotFoundError as e:
-        logger.error(f"Match data file not found: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Match data not available for {tour} {current_year}"
-        )
+        logger.warning(f"Match data file not found: {e} - returning empty list")
+        return []
     except Exception as e:
         logger.error(f"Error processing yesterday's matches: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing match data: {str(e)}"
-        )
+        # Return empty list instead of raising exception for graceful degradation
+        return []
+
+
+@app.get("/api/v2/matches/latest", response_model=List[MatchResultDTO], tags=["Matches"])
+async def get_latest_matches(
+    days: int = Query(1, description="Number of days to look back", ge=1, le=7),
+    tour: str = Query("atp", description="Tour (atp or wta)")
+):
+    """
+    Get latest match results for the last N days from CSV files.
+    
+    CSV files are updated daily at 6am via the scheduled update_match_data() function.
+    
+    Args:
+        days: Number of days to look back (1-7, default: 1)
+        tour: Tournament tour ('atp' or 'wta')
+        
+    Returns:
+        List of match results sorted by date (newest first)
+    """
+    from datetime import datetime, timedelta
+    import pandas as pd
+    from pathlib import Path
+    from src.core.tennis_utils import transform_csv_row_to_dto
+    
+    current_year = datetime.now().year
+    all_matches = []
+    
+    try:
+        # Load CSV file
+        data_dir = project_root / "data" / tour.lower()
+        csv_file = data_dir / f"{tour.lower()}_matches_{current_year}.csv"
+        
+        if not csv_file.exists():
+            # Try previous year if current year file doesn't exist
+            csv_file = data_dir / f"{tour.lower()}_matches_{current_year - 1}.csv"
+        
+        if not csv_file.exists():
+            logger.info(f"No data file found for {tour} {current_year} - returning empty list")
+            return []
+        
+        # Read CSV file
+        df = pd.read_csv(csv_file)
+        
+        if df.empty:
+            logger.info(f"CSV file for {tour} {current_year} is empty - returning empty list")
+            return []
+        
+        # Calculate date range (yesterday back to N days ago)
+        today = datetime.now()
+        date_range = []
+        for i in range(days):
+            target_date = today - timedelta(days=i+1)  # Start from yesterday
+            date_range.append(target_date)
+        
+        # Filter matches for the date range
+        for target_date in date_range:
+            date_str = target_date.strftime("%Y-%m-%d")
+            date_int = int(target_date.strftime("%Y%m%d"))
+            
+            for _, row in df.iterrows():
+                # Parse date from the row
+                date_val = row.get('tourney_date')
+                if pd.notna(date_val):
+                    try:
+                        row_date_int = int(str(date_val))
+                        
+                        # Only include matches for this date
+                        if row_date_int != date_int:
+                            continue
+                    except (ValueError, TypeError):
+                        continue
+                else:
+                    continue
+                
+                # Transform CSV row to DTO using shared utility
+                match_dto = transform_csv_row_to_dto(row, date_str, tour)
+                if match_dto:
+                    all_matches.append(MatchResultDTO(**match_dto))
+        
+        # Sort by date (newest first) - dates are already in order from date_range
+        # But we want to ensure newest first, so reverse
+        all_matches.reverse()
+        
+        logger.info(f"Returned {len(all_matches)} matches for {tour} over last {days} days")
+        return all_matches
+        
+    except FileNotFoundError as e:
+        logger.warning(f"Match data file not found: {e} - returning empty list")
+        return []
+    except Exception as e:
+        logger.error(f"Error processing latest matches: {e}")
+        # Return empty list instead of raising exception for graceful degradation
+        return []
 
 
 def _get_player_tour_lookup() -> Dict[str, str]:

@@ -33,3 +33,8 @@ class ConfigurationError(TennisPredictionError):
 class RatingSystemError(TennisPredictionError):
     """Error related to rating system operations."""
     pass
+
+
+class MatchResultsProviderError(TennisPredictionError):
+    """Error related to match results provider operations."""
+    pass
