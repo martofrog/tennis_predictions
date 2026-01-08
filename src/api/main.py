@@ -65,6 +65,13 @@ scheduler = BackgroundScheduler()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events."""
+    import sys
+    # Skip lifespan entirely during tests to avoid overhead
+    test_mode = any("pytest" in arg for arg in sys.argv) or os.getenv("PYTEST_CURRENT_TEST") or os.getenv("TESTING") == "true"
+    if test_mode:
+        yield
+        return
+    
     startup_event()
     yield
     shutdown_event()
@@ -636,6 +643,13 @@ def fetch_missing_dates_for_year(year: int, tour: str, data_dir: Path) -> None:
 
 def startup_event():
     """Startup event - initialize scheduler, download data, and train model."""
+    import sys
+    # Skip startup tasks during tests
+    test_mode = any("pytest" in arg for arg in sys.argv) or os.getenv("PYTEST_CURRENT_TEST") or os.getenv("TESTING") == "true"
+    if test_mode:
+        logger.debug("Skipping startup tasks (test mode)")
+        return
+    
     logger.info("🚀 Starting Tennis Predictions API...")
     
     scheduler.start()

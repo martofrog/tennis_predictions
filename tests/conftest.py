@@ -26,8 +26,15 @@ from src.services.dependency_container import get_container, reset_container
 @pytest.fixture
 def client():
     """FastAPI test client with CORS support."""
+    # Set test mode environment variable to skip expensive startup operations
+    import os
+    os.environ["TESTING"] = "true"
+    # TestClient doesn't trigger lifespan by default, but we set TESTING anyway
     with TestClient(app, base_url="http://testserver") as test_client:
         yield test_client
+    # Clean up
+    if "TESTING" in os.environ:
+        del os.environ["TESTING"]
 
 
 @pytest.fixture

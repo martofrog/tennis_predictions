@@ -40,22 +40,52 @@ else
 fi
 
 # Run tests with minimal output
-if $PYTHON -m pytest tests/ -q --tb=no --no-cov 2>&1 | grep -E "(passed|failed|error)"; then
-    TEST_RESULT=${PIPESTATUS[0]}
+# Use timeout to prevent hanging (30 seconds should be enough for unit tests)
+if command -v gtimeout &> /dev/null; then
+    TIMEOUT_CMD="gtimeout"
+elif command -v timeout &> /dev/null; then
+    TIMEOUT_CMD="timeout"
+else
+    TIMEOUT_CMD=""
+fi
+
+if [ -n "$TIMEOUT_CMD" ]; then
+    TEST_OUTPUT=$($TIMEOUT_CMD 30 $PYTHON -m pytest tests/ -q --tb=no --no-cov 2>&1)
+    TEST_RESULT=$?
+else
+    # Fallback: run without timeout (may hang if tests are slow)
+    TEST_OUTPUT=$($PYTHON -m pytest tests/ -q --tb=no --no-cov 2>&1)
+    TEST_RESULT=$?
+fi
+
+# Check if tests passed or failed
+if echo "$TEST_OUTPUT" | grep -qE "(passed|failed|error)"; then
     if [ $TEST_RESULT -ne 0 ]; then
         echo ""
         echo -e "${RED}❌ TESTS FAILED${NC}"
         echo ""
         echo "Please fix failing tests before pushing."
-        echo "Run: bin/python -m pytest tests/ -v"
+        echo "Run: $PYTHON -m pytest tests/ -v"
         echo ""
         echo "To push anyway (not recommended): git push --no-verify"
         exit 1
     else
         echo -e "${GREEN}✓ All tests passed${NC}"
     fi
+elif [ $TEST_RESULT -eq 124 ]; then
+    echo -e "${RED}❌ TESTS TIMED OUT (took longer than 30 seconds)${NC}"
+    echo ""
+    echo "Tests are taking too long. This might indicate:"
+    echo "  - Tests are making real API calls"
+    echo "  - Tests are downloading data"
+    echo "  - Tests are stuck in an infinite loop"
+    echo ""
+    echo "Please investigate and fix slow tests."
+    echo "To push anyway (not recommended): git push --no-verify"
+    exit 1
 else
-    echo -e "${YELLOW}⚠️  Could not run tests (pytest not found?)${NC}"
+    echo -e "${YELLOW}⚠️  Could not run tests (pytest not found or unexpected error)${NC}"
+    echo "Test output: $TEST_OUTPUT"
     echo "Continuing anyway..."
 fi
 
