@@ -34,7 +34,12 @@ from apscheduler.triggers.cron import CronTrigger
 from src.services.dependency_container import get_container, reset_container
 from src.services.rating_service import RatingService
 from src.services.betting_service import BettingService
-from src.infrastructure.adapters import ApiTennisAdapter, FallbackMatchResultsProvider
+from src.infrastructure.adapters import (
+    JeffSackmannAdapter,
+    TennisDataCoUkAdapter,
+    TheOddsApiScoresAdapter,
+    FallbackMatchResultsProvider
+)
 from src.core.exceptions import MatchResultsProviderError
 from src.core.constants import (
     DEFAULT_MIN_EDGE,
@@ -155,12 +160,16 @@ def update_match_data():
         # Step 1: Fetch yesterday's results using fallback provider system
         logger.info(f"📥 Step 1/3: Fetching yesterday's results ({yesterday.strftime('%Y-%m-%d')})...")
         try:
-            # Create fallback provider with API-Tennis as primary
-            # Fallback providers can be added here as they become available
-            api_tennis = ApiTennisAdapter()
+            # Create fallback provider with priority order:
+            # 1. Jeff Sackmann (GitHub) - primary
+            # 2. tennis-data.co.uk - first fallback
+            # 3. The Odds API - final fallback (only supports last 3 days)
+            jeff_sackmann = JeffSackmannAdapter()
+            tennis_data_co_uk = TennisDataCoUkAdapter()
+            odds_api_scores = TheOddsApiScoresAdapter()
             results_provider = FallbackMatchResultsProvider(
-                primary_provider=api_tennis,
-                fallback_providers=[]  # Add fallback providers here when available
+                primary_provider=jeff_sackmann,
+                fallback_providers=[tennis_data_co_uk, odds_api_scores]
             )
             
             for tour in ['atp', 'wta']:
@@ -230,8 +239,13 @@ def update_match_data():
             years_to_update = [current_year - 1, current_year]
             
             for year in years_to_update:
+                # Skip future years (data doesn't exist yet)
+                if year > current_year:
+                    logger.debug(f"  Skipping {year} (future year)")
+                    continue
+                    
                 for tour in ['atp', 'wta']:
-                    logger.info(f"  Checking {tour.upper()} {year}...")
+                    logger.debug(f"  Checking {tour.upper()} {year}...")
                     result = downloader.download_matches(year, tour=tour, verbose=False, use_fallback=True)
                     if result is not None:
                         # Merge with existing file if it exists
@@ -253,7 +267,7 @@ def update_match_data():
                             result.to_csv(year_file, index=False)
                             logger.info(f"  ✓ {tour.upper()} {year} created ({len(result)} matches)")
                     else:
-                        logger.info(f"  ℹ️  {tour.upper()} {year} not available or no new data")
+                        logger.debug(f"  ℹ️  {tour.upper()} {year} not available or no new data")
         else:
             logger.warning("⚠️  download_match_data.py not found, skipping download")
         
@@ -479,7 +493,10 @@ def train_model_at_startup():
 
 def fetch_missing_dates_for_year(year: int, tour: str, data_dir: Path) -> None:
     """
-    Fetch missing dates for a given year and tour using API-Tennis.com.
+    Fetch missing dates for a given year and tour using The Odds API scores endpoint.
+    
+    Note: The Odds API only supports data from the last 3 days. Dates older than 3 days
+    will be skipped. For older historical data, use tennis-data.co.uk.
     
     Includes rate limiting to avoid overwhelming the API.
     
@@ -490,12 +507,17 @@ def fetch_missing_dates_for_year(year: int, tour: str, data_dir: Path) -> None:
     """
     from datetime import datetime, timedelta
     import pandas as pd
-    from src.infrastructure.adapters import ApiTennisAdapter, FallbackMatchResultsProvider
+    from src.infrastructure.adapters import (
+        JeffSackmannAdapter,
+        TennisDataCoUkAdapter,
+        TheOddsApiScoresAdapter,
+        FallbackMatchResultsProvider
+    )
     from src.core.exceptions import MatchResultsProviderError
     
     # Rate limiting: delay between API calls (in seconds)
-    # API-Tennis.com likely has rate limits, so be conservative
-    RATE_LIMIT_DELAY = float(os.getenv("API_TENNIS_RATE_LIMIT_DELAY", "0.5"))  # 0.5 seconds = 2 requests/second
+    # The Odds API has rate limits, so be conservative
+    RATE_LIMIT_DELAY = float(os.getenv("ODDS_API_RATE_LIMIT_DELAY", "0.5"))  # 0.5 seconds = 2 requests/second
     
     year_file = data_dir / tour / f"{tour}_matches_{year}.csv"
     
@@ -529,12 +551,17 @@ def fetch_missing_dates_for_year(year: int, tour: str, data_dir: Path) -> None:
     
     logger.info(f"  📥 {tour.upper()} {year}: Fetching {len(dates_to_fetch)} missing dates (rate limit: {RATE_LIMIT_DELAY}s between calls)...")
     
-    # Initialize API adapter
+    # Initialize providers with priority order:
+    # 1. Jeff Sackmann (GitHub) - primary
+    # 2. tennis-data.co.uk - first fallback
+    # 3. The Odds API - final fallback (only supports last 3 days, will skip older dates automatically)
     try:
-        api_tennis = ApiTennisAdapter()
+        jeff_sackmann = JeffSackmannAdapter()
+        tennis_data_co_uk = TennisDataCoUkAdapter()
+        odds_api_scores = TheOddsApiScoresAdapter()
         results_provider = FallbackMatchResultsProvider(
-            primary_provider=api_tennis,
-            fallback_providers=[]
+            primary_provider=jeff_sackmann,
+            fallback_providers=[tennis_data_co_uk, odds_api_scores]
         )
     except Exception as e:
         logger.warning(f"  ⚠️  Failed to initialize API adapter for {tour.upper()} {year}: {e}")
@@ -563,7 +590,10 @@ def fetch_missing_dates_for_year(year: int, tour: str, data_dir: Path) -> None:
                     logger.info(f"    Progress: {successful_dates}/{len(dates_to_fetch)} dates fetched ({elapsed:.1f}s elapsed, ~{estimated_time:.1f}min remaining)...")
         except MatchResultsProviderError as e:
             failed_dates += 1
-            logger.debug(f"    ⚠️  Failed to fetch {date.strftime('%Y-%m-%d')}: {e}")
+            # Only log actual errors, not expected empty results for future dates
+            error_str = str(e)
+            if "returned empty results" not in error_str and "All match results providers failed" not in error_str:
+                logger.debug(f"    ⚠️  Failed to fetch {date.strftime('%Y-%m-%d')}: {e}")
             # Still wait even on failure to respect rate limits
             if i < len(dates_to_fetch) - 1:
                 time.sleep(RATE_LIMIT_DELAY)
@@ -629,17 +659,28 @@ def startup_event():
         logger.info("📥 Fetching yesterday's match results at startup...")
         from datetime import datetime, timedelta
         import pandas as pd
-        from src.infrastructure.adapters import ApiTennisAdapter, FallbackMatchResultsProvider
+        from src.infrastructure.adapters import (
+            JeffSackmannAdapter,
+            TennisDataCoUkAdapter,
+            TheOddsApiScoresAdapter,
+            FallbackMatchResultsProvider
+        )
         from src.core.exceptions import MatchResultsProviderError
         
         current_year = datetime.now().year
         yesterday = datetime.now() - timedelta(days=1)
         data_dir = project_root / "data"
         
-        api_tennis = ApiTennisAdapter()
+        # Create fallback provider with priority order:
+        # 1. Jeff Sackmann (GitHub) - primary
+        # 2. tennis-data.co.uk - first fallback
+        # 3. The Odds API - final fallback (only supports last 3 days)
+        jeff_sackmann = JeffSackmannAdapter()
+        tennis_data_co_uk = TennisDataCoUkAdapter()
+        odds_api_scores = TheOddsApiScoresAdapter()
         results_provider = FallbackMatchResultsProvider(
-            primary_provider=api_tennis,
-            fallback_providers=[]
+            primary_provider=jeff_sackmann,
+            fallback_providers=[tennis_data_co_uk, odds_api_scores]
         )
         
         for tour in ['atp', 'wta']:
@@ -666,9 +707,14 @@ def startup_event():
                         new_df.to_csv(year_file, index=False)
                         logger.info(f"  ✓ {tour.upper()} startup: created file with {len(new_df)} matches")
                 else:
-                    logger.info(f"  ℹ️  No {tour.upper()} results found for yesterday")
+                    logger.debug(f"  ℹ️  No {tour.upper()} results found for yesterday")
             except MatchResultsProviderError as e:
-                logger.warning(f"  ⚠️  Failed to fetch {tour.upper()} results at startup: {e}")
+                # Only log as warning if it's an actual error, not just empty results
+                error_str = str(e)
+                if "returned empty results" not in error_str and "All match results providers failed" not in error_str:
+                    logger.warning(f"  ⚠️  Failed to fetch {tour.upper()} results at startup: {e}")
+                else:
+                    logger.debug(f"  ℹ️  No {tour.upper()} results available for yesterday: {e}")
             except Exception as e:
                 logger.warning(f"  ⚠️  Error fetching {tour.upper()} results at startup: {e}")
     except Exception as e:
@@ -726,12 +772,17 @@ def startup_event():
                     downloader = TennisDataDownloader(data_dir=str(data_dir))
                     
                     for tour, year in missing_data:
+                        # Skip future years (data doesn't exist yet)
+                        if year > current_year:
+                            logger.debug(f"  Skipping {tour.upper()} {year} (future year)")
+                            continue
+                            
                         logger.info(f"  Attempting {tour.upper()} {year}...")
-                        result = downloader.download_matches(year, tour=tour, verbose=True, use_fallback=True)
+                        result = downloader.download_matches(year, tour=tour, verbose=False, use_fallback=True)
                         if result is not None:
                             logger.info(f"  ✓ {tour.upper()} {year} downloaded successfully ({len(result)} matches)")
                         else:
-                            logger.warning(f"  ⚠️  {tour.upper()} {year} could not be downloaded")
+                            logger.debug(f"  ℹ️  {tour.upper()} {year} not available (may be future year or no data yet)")
                     
                     logger.info("✓ Match data check completed")
                 else:
