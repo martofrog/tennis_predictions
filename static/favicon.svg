@@ -1,35 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <!-- Basketball base -->
-  <circle cx="50" cy="50" r="48" fill="#ff8c00" stroke="#000" stroke-width="1.5"/>
+  <!-- Tennis ball base - bright yellow-green -->
+  <circle cx="50" cy="50" r="48" fill="#DDFF00" stroke="#000" stroke-width="1"/>
   
-  <!-- Classic basketball seam pattern - all curved lines meeting at center -->
-  <!-- Top-left to center curve -->
-  <path d="M 20 20 Q 35 35 50 50" fill="none" stroke="#000" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Tennis ball characteristic curved seam pattern -->
+  <!-- Top curve (left to right) -->
+  <path d="M 15 50 Q 30 25 50 30 Q 70 25 85 50" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
   
-  <!-- Top-right to center curve -->
-  <path d="M 80 20 Q 65 35 50 50" fill="none" stroke="#000" stroke-width="3.5" stroke-linecap="round"/>
-  
-  <!-- Bottom-left to center curve -->
-  <path d="M 20 80 Q 35 65 50 50" fill="none" stroke="#000" stroke-width="3.5" stroke-linecap="round"/>
-  
-  <!-- Bottom-right to center curve -->
-  <path d="M 80 80 Q 65 65 50 50" fill="none" stroke="#000" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Bottom curve (left to right) -->
+  <path d="M 15 50 Q 30 75 50 70 Q 70 75 85 50" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
   
   <!-- Left vertical curve -->
-  <path d="M 15 30 Q 20 50 15 70" fill="none" stroke="#000" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M 50 15 Q 25 30 30 50 Q 25 70 50 85" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
   
   <!-- Right vertical curve -->
-  <path d="M 85 30 Q 80 50 85 70" fill="none" stroke="#000" stroke-width="3.5" stroke-linecap="round"/>
-  
-  <!-- Top horizontal curve -->
-  <path d="M 30 15 Q 50 20 70 15" fill="none" stroke="#000" stroke-width="3.5" stroke-linecap="round"/>
-  
-  <!-- Bottom horizontal curve -->
-  <path d="M 30 85 Q 50 80 70 85" fill="none" stroke="#000" stroke-width="3.5" stroke-linecap="round"/>
-  
-  <!-- Center vertical line -->
-  <line x1="50" y1="12" x2="50" y2="88" stroke="#000" stroke-width="3.5" stroke-linecap="round"/>
-  
-  <!-- Center horizontal line -->
-  <line x1="12" y1="50" x2="88" y2="50" stroke="#000" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M 50 15 Q 75 30 70 50 Q 75 70 50 85" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
 </svg>
